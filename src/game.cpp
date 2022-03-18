@@ -16,6 +16,9 @@ struct GameState
     Bitmap entityBitmap;
     Bitmap treeBitmap;
 
+    // NOTE(manuto): camera test...
+    Vec2 cameraP;
+    
     // NOTE(manuto): player test...    
     i32 playerTileX;
     i32 playerTileY;
@@ -24,7 +27,7 @@ struct GameState
     f32 playerW;
     f32 playerH;
 
-    // TODO(manuto): tilemap data
+    // NOTE(manuto): tilemap data
     f32 tileSizeInMeters;
     i32 tileSizeInPixels;
     f32 metersToPixels;
@@ -36,9 +39,9 @@ global_variable i32 tilemapTest[] = {
 
     0, 0, 0, 0, 0, 0, 0, 0, 
     0, 1, 1, 1, 1, 1, 1, 0, 
+    0, 1, 1, 1, 0, 1, 1, 0, 
     0, 1, 1, 1, 1, 1, 1, 0, 
-    0, 1, 1, 0, 0, 1, 1, 0, 
-    0, 1, 1, 0, 0, 1, 1, 0, 
+    0, 1, 1, 0, 1, 0, 1, 0, 
     0, 1, 1, 1, 1, 1, 1, 0, 
     0, 1, 1, 1, 1, 1, 1, 0, 
     0, 0, 0, 0, 0, 0, 0, 0, 
@@ -398,18 +401,17 @@ void DrawPixel(GameBackBuffer *backBuffer, f32 x, f32 y, u32 color)
     *colorBuffer = color;
 }
 
-void DrawIsometricTile(GameBackBuffer *backBuffer, Bitmap *bitmap, i32 x, i32 y)
+Vec2 MapToIsometricTilemapTile(f32 x, f32 y)
 {
-    const i32 HALF_TILE_WIDTH = 64;
-    const i32 HALF_TILE_HEIGHT = 32;
-    const i32 startX = (WINDOW_WIDTH / 2) - HALF_TILE_WIDTH;
-    const i32 startY = (WINDOW_HEIGHT / 2) - (HALF_TILE_WIDTH*4);
+    const f32 HALF_TILE_WIDTH = 64;
+    const f32 HALF_TILE_HEIGHT = 32;
+    const f32 startX = (WINDOW_WIDTH / 2) - HALF_TILE_WIDTH;
+    const f32 startY = (WINDOW_HEIGHT / 2);
 
-    i32 finalX = startX + (x * HALF_TILE_WIDTH) - (y * HALF_TILE_WIDTH);
-    i32 finalY = startY + (x * HALF_TILE_HEIGHT) + (y * HALF_TILE_HEIGHT); 
-    
-    RenderTextureQuad(backBuffer, bitmap, (f32)finalX, (f32)finalY, 128, 64);
-    DrawPixel(backBuffer, (f32)finalX, (f32)finalY, 0xFF00FF00);
+    f32 finalX = startX + (x * HALF_TILE_WIDTH) - (y * HALF_TILE_WIDTH);
+    f32 finalY = startY + (x * HALF_TILE_HEIGHT) + (y * HALF_TILE_HEIGHT); 
+    Vec2 result = { finalX, finalY };
+    return result;
 }
 
 Vec2 MapToIsometricTilemap(f32 x, f32 y)
@@ -417,7 +419,7 @@ Vec2 MapToIsometricTilemap(f32 x, f32 y)
     const f32 HALF_TILE_WIDTH = 64;
     const f32 HALF_TILE_HEIGHT = 32;
     const f32 startX = (WINDOW_WIDTH / 2);
-    const f32 startY = (WINDOW_HEIGHT / 2) - (HALF_TILE_WIDTH*4);
+    const f32 startY = (WINDOW_HEIGHT / 2);
 
     f32 finalX = startX + (x * HALF_TILE_WIDTH) - (y * HALF_TILE_WIDTH);
     f32 finalY = startY + (x * HALF_TILE_HEIGHT) + (y * HALF_TILE_HEIGHT); 
@@ -427,8 +429,8 @@ Vec2 MapToIsometricTilemap(f32 x, f32 y)
 
 // TODO(manuto): delete, this is just for debugin on windows
 ////////////////////////////////////////////////////////////
-#include <windows.h>
-#include <stdio.h>
+#include <windows.h>                                      //
+#include <stdio.h>                                        //
 ////////////////////////////////////////////////////////////
 
 EXPORT_TO_PLATORM 
@@ -450,6 +452,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->tileSizeInPixels = 32;
         gameState->metersToPixels = (f32)gameState->tileSizeInPixels / gameState->tileSizeInMeters;
         gameState->pixelsToMeters = gameState->tileSizeInMeters / (f32)gameState->tileSizeInPixels;
+
+        gameState->cameraP.x = 2.0f;
+        gameState->cameraP.y = 2.0f;
 
         gameState->playerP.x = 2.0f;
         gameState->playerP.y = 2.0f;
@@ -599,8 +604,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
     
     gameState->playerP = gameState->playerDP * input->deltaTime + gameState->playerP; 
+    
+    gameState->cameraP = gameState->playerP;
 
-    Vec2 playerIsometricPosition = MapToIsometricTilemap(gameState->playerP.x, gameState->playerP.y);
+    Vec2 cameraOffset = {(WINDOW_WIDTH*0.1f)*gameState->pixelsToMeters, (WINDOW_HEIGHT*0.1f)*gameState->pixelsToMeters};
+    Vec2 playerInCameraSpace = (gameState->playerP - gameState->cameraP);
+
+    Vec2 playerIsometricPosition = MapToIsometricTilemap(playerInCameraSpace.x, playerInCameraSpace.y);
 
     u32 *colorBuffer = (u32 *)backBuffer->memory;
     for(i32 y  = 0; y < backBuffer->height; ++y)
@@ -611,34 +621,42 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         }
     }
 
+
+
     for(i32 y = 0; y < 8; ++y)
     {
         for(i32 x = 0; x < 8; ++x)
         {
             if(tilemapTest[y * 8 + x] == 1)
             {
-                i32 tileSize = 64;
-
-                f32 posX = x * (f32)gameState->tileSizeInMeters;
-                f32 posY = y * (f32)gameState->tileSizeInMeters;
-                DrawRectangle(backBuffer, posX*gameState->metersToPixels, posY*gameState->metersToPixels,
-                              (posX + gameState->tileSizeInMeters)*gameState->metersToPixels,
-                              (posY + gameState->tileSizeInMeters)*gameState->metersToPixels,
-                              0xFF00FF00);
-                DrawIsometricTile(backBuffer, &gameState->smallTileBitmap, x, y);
+                Vec2 pos = (Vec2{(f32)x, (f32)y} - gameState->cameraP);
+                Vec2 tileIsometricPosition = MapToIsometricTilemapTile(pos.x, pos.y);
+                RenderTextureQuad(backBuffer, &gameState->smallTileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 64);
             }
         }
     }
-    
-    DrawRectangle(backBuffer,
-                 (gameState->playerP.x*gameState->metersToPixels) - (gameState->playerW*0.5f)*gameState->metersToPixels,
-                 (gameState->playerP.y*gameState->metersToPixels) - (gameState->playerH*0.5f)*gameState->metersToPixels,
-                 (gameState->playerP.x*gameState->metersToPixels) + (gameState->playerW*0.5f)*gameState->metersToPixels,
-                 (gameState->playerP.y*gameState->metersToPixels) + (gameState->playerH*0.5f)*gameState->metersToPixels,
-                 0xFFFF0000);
-    
     RenderTextureQuad(backBuffer, &gameState->entityBitmap, playerIsometricPosition.x - (32+16+8), playerIsometricPosition.y - (96+16), 128, 128);
     
-        
-    DrawPixel(backBuffer, playerIsometricPosition.x, playerIsometricPosition.y, 0xFF00FF00);
+    for(i32 y = 0; y < 8; ++y)
+    {
+        for(i32 x = 0; x < 8; ++x)
+        {
+            if(tilemapTest[y * 8 + x] == 1)
+            {
+                Vec2 pos = (Vec2{x * (f32)gameState->tileSizeInMeters, y * (f32)gameState->tileSizeInMeters} - gameState->cameraP) + Vec2{3, 3} * gameState->tileSizeInMeters;
+                DrawRectangle(backBuffer, pos.x*gameState->metersToPixels, pos.y*gameState->metersToPixels,
+                              (pos.x + gameState->tileSizeInMeters)*gameState->metersToPixels,
+                              (pos.y + gameState->tileSizeInMeters)*gameState->metersToPixels,
+                              0xFF00FF00);
+            }
+        }
+    }
+    Vec2 playerMiniMap = playerInCameraSpace + Vec2{3, 3} * gameState->tileSizeInMeters;
+    DrawRectangle(backBuffer,
+                 (playerMiniMap.x*gameState->metersToPixels) - (gameState->playerW*0.5f)*gameState->metersToPixels,
+                 (playerMiniMap.y*gameState->metersToPixels) - (gameState->playerH*0.5f)*gameState->metersToPixels,
+                 (playerMiniMap.x*gameState->metersToPixels) + (gameState->playerW*0.5f)*gameState->metersToPixels,
+                 (playerMiniMap.y*gameState->metersToPixels) + (gameState->playerH*0.5f)*gameState->metersToPixels,
+                 0xFFFF0000);
+    
 }

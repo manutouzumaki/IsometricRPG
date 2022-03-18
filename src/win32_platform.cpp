@@ -364,7 +364,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
 
         currInput->deltaTime = (f32)((f64)(currentCounter.QuadPart - lastCounter.QuadPart) / (f64)frequency.QuadPart);
 
-#if 0    
+#if 1    
         char buffer[100];
         sprintf_s(buffer, "fps: %f\n", fps);
         OutputDebugString(buffer);
@@ -374,7 +374,6 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
         {
             currInput->buttons[i].wasDown = false;
         }
-        
 
         PullWndMessages(currInput);
         
@@ -393,7 +392,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
         }
         else
         {
-            // Controller is not connected
+            // NOTE(manuto): Controller is not connected
         }
         
 
