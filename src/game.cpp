@@ -1,5 +1,7 @@
 #include "platform.h"
 #include "math.h"
+#include <xmmintrin.h>
+#include <emmintrin.h>
 
 struct Rect2
 {
@@ -20,8 +22,6 @@ struct GameState
     Vec2 cameraP;
     
     // NOTE(manuto): player test...    
-    i32 playerTileX;
-    i32 playerTileY;
     Vec2 playerP;
     Vec2 playerDP;
     f32 playerW;
@@ -203,25 +203,13 @@ void RenderTextureQuad(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 posX, f32
     Vec2 position = {posX, poxY};
     Vec2 right = Vec2Rotate({1, 0}, angle);
     Vec2 down = Vec2Perp(right);
-    
-    right = right * width;
-    down = down * height;
 
-#if 0
-    Vec2 vertices[4] = {
-        position - right*0.5f - down*0.5f,
-        position + right*0.5f - down*0.5f,
-        position + right*0.5f + down*0.5f,
-        position - right*0.5f + down*0.5f,
-    };
-#else
     Vec2 vertices[4] = {
         position,
-        position + right,
-        position + right + down,
-        position + down,
+        position + right*width,
+        position + right*width + down*height,
+        position + down*height,
     };
-#endif
 
     // TODO: Create the bounding box arrown the quad
     // start with the x
@@ -248,21 +236,6 @@ void RenderTextureQuad(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 posX, f32
             maxY = vertices[i].y;
         }
     }
-    
-    Vec2 a = vertices[0];
-    Vec2 b = vertices[1];
-    Vec2 c = vertices[2];
-    Vec2 d = vertices[3];
-
-    Vec2 ab = b - a;
-    Vec2 bc = c - b;
-    Vec2 cd = d - c;
-    Vec2 da = a - d;
-    
-    Vec2 aNormal = Vec2Norm(Vec2Perp(ab));
-    Vec2 bNormal = Vec2Norm(Vec2Perp(bc));
-    Vec2 cNormal = Vec2Norm(Vec2Perp(cd));
-    Vec2 dNormal = Vec2Norm(Vec2Perp(da));
 
     if(minX < 0)
     {
@@ -281,95 +254,110 @@ void RenderTextureQuad(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 posX, f32
         maxY = (f32)backBuffer->height;
     }
 
-    f32 invWidth = 1.0f / Vec2LengthSq(right);
-    f32 invHeight = 1.0f / Vec2LengthSq(down);
 
     u32 offset = ((u32)minY * backBuffer->width + (u32)minX) * BYTES_PER_PIXEL;
     u8 *row = (u8 *)backBuffer->memory + offset;
+    
+    __m128 positionX = _mm_set1_ps(position.x); 
+    __m128 positionY = _mm_set1_ps(position.y);
+    __m128 rightX = _mm_set1_ps(right.x); 
+    __m128 rightY = _mm_set1_ps(right.y); 
+    __m128 downX = _mm_set1_ps(down.x);
+    __m128 downY = _mm_set1_ps(down.y);
+    __m128 invWidth = _mm_set1_ps(1.0f / width);
+    __m128 invHeight = _mm_set1_ps(1.0f / height);
+    __m128 one = _mm_set1_ps(1.0f);
+    __m128 zero = _mm_set1_ps(0.0f);
+    __m128 f255 = _mm_set1_ps(255.0f);
+    __m128i u255 = _mm_set1_epi32(0xFF);
+    __m128 bitmapWidth = _mm_set1_ps((f32)bitmap->width);
+    __m128 bitmapHeight = _mm_set1_ps((f32)bitmap->height);
+
+
     for(i32 y = (i32)minY; y < maxY; ++y)
     {
         u32 *dst = (u32 *)row;
-        for(i32 x = (i32)minX; x < maxX; ++x)
+        for(i32 x = (i32)minX; x < maxX; x += 4)
         {
-            // TODO(manuto): check with all the normals to see 
-            // if the pixel is inside the quad...
-            Vec2 pixelPos = {(f32)x, (f32)y};
-            if(Vec2Dot(aNormal, a - pixelPos) <= 0.0f &&
-               Vec2Dot(bNormal, b - pixelPos) <= 0.0f &&
-               Vec2Dot(cNormal, c - pixelPos) <= 0.0f &&
-               Vec2Dot(dNormal, d - pixelPos) <= 0.0f)
-            {
-                Vec2 d = pixelPos - a;
 
-                f32 u = (Vec2Dot(d, right)*invWidth);
-                f32 v = (Vec2Dot(d, down)*invHeight);
+            __m128i oldTexel = _mm_loadu_si128((__m128i *)dst);
 
-                //Assert((u >= 0.0f) && (u <= 1.0f));
-                //Assert((v >= 0.0f) && (v <= 1.0f));
+            __m128 pixelPosX = _mm_set_ps((f32)(x + 3), (f32)(x + 2), (f32)(x + 1), (f32)x);
+            __m128 pixelPosY = _mm_set1_ps((f32)y);
 
-                f32 texX = u * (f32)(bitmap->width);
-                f32 texY = v * (f32)(bitmap->height);
-                 
-                i32 finalTexX = (i32)texX;
-                i32 finalTexY = (i32)texY;
+            __m128 dx = _mm_sub_ps(pixelPosX, positionX); 
+            __m128 dy = _mm_sub_ps(pixelPosY, positionY); 
 
-                f32 fx = texX - (f32)finalTexX;
-                f32 fy = texY - (f32)finalTexY;
+            __m128 u = _mm_mul_ps(_mm_add_ps(_mm_mul_ps(dx, rightX), _mm_mul_ps(dy, rightY)),  invWidth);
+            __m128 v = _mm_mul_ps(_mm_add_ps(_mm_mul_ps(dx, downX), _mm_mul_ps(dy, downY)),  invHeight);
+            
+            __m128i mask = _mm_castps_si128(_mm_and_ps
+                    (
+                        _mm_and_ps(_mm_cmpge_ps(u, zero), _mm_cmple_ps(u, one)),
+                        _mm_and_ps(_mm_cmpge_ps(v, zero), _mm_cmple_ps(v, one))
+                    ));
+            
+            u = _mm_min_ps(_mm_max_ps(u, zero), one);
+            v = _mm_min_ps(_mm_max_ps(v, zero), one);
 
-                //Assert((finalTexX >= 0) && (finalTexX < (i32)bitmap->width));
-                //Assert((finalTexY >= 0) && (finalTexY < (i32)bitmap->height));
+            __m128 texX = _mm_mul_ps(u, bitmapWidth);
+            __m128 texY = _mm_mul_ps(v, bitmapHeight);
 
-#if 1
-                i32 offset = (-finalTexY * bitmap->width * BYTES_PER_PIXEL) + finalTexX*sizeof(u32);
-                u8 *texel = ((u8 *)bitmap->data) + ((bitmap->width *(bitmap->height - 1)) * BYTES_PER_PIXEL);
-                texel += offset;
-#else
-                u8 *texel = ((u8 *)bitmap->data) + finalTexY * bitmap->width * BYTES_PER_PIXEL + finalTexX*sizeof(u32);
-#endif
-#if 0              
-                // NOTE(manuto): active this for bilinear filtering
-                u32 *texelA = (u32 *)texel;
-                u32 *texelB = (u32 *)(texel + sizeof(u32));
-                u32 *texelC = (u32 *)(texel - (bitmap->width * BYTES_PER_PIXEL));
-                u32 *texelD = (u32 *)(texel - (bitmap->width * BYTES_PER_PIXEL) + sizeof(u32));
-                Vec4 texA = {
-                    {(f32)((*texelA >> 16) & 0xFF)}, {(f32)((*texelA >> 8) & 0xFF)},
-                    {(f32)((*texelA >> 0) & 0xFF)}, {(f32)((*texelA >> 24) & 0xFF)},
-                };
-                Vec4 texB = {
-                    {(f32)((*texelB >> 16) & 0xFF)}, {(f32)((*texelB >> 8) & 0xFF)},
-                    {(f32)((*texelB >> 0) & 0xFF)}, {(f32)((*texelB >> 24) & 0xFF)},
-                };
-                Vec4 texC = {
-                    {(f32)((*texelC >> 16) & 0xFF)}, {(f32)((*texelC >> 8) & 0xFF)},
-                    {(f32)((*texelC >> 0) & 0xFF)}, {(f32)((*texelC >> 24) & 0xFF)},
-                };
-                Vec4 texD = {
-                    {(f32)((*texelD >> 16) & 0xFF)}, {(f32)((*texelD >> 8) & 0xFF)},
-                    {(f32)((*texelD >> 0) & 0xFF)}, {(f32)((*texelD >> 24) & 0xFF)},
-                };
-                Vec4 finalColor = Vec4Lerp(Vec4Lerp(texA, texB, fx), Vec4Lerp(texC, texD, fx), fy);
-                f32 a = finalColor.w / 255.0f;
-                f32 srcR = finalColor.x;
-                f32 srcG = finalColor.y;
-                f32 srcB = finalColor.z;
-#else
-                f32 a = (f32)((*(u32 *)texel >> 24) & 0xFF) / 255.0f;
-                f32 srcR = (f32)((*(u32 *)texel >> 16) & 0xFF);
-                f32 srcG = (f32)((*(u32 *)texel >> 8) & 0xFF);
-                f32 srcB = (f32)((*(u32 *)texel >> 0) & 0xFF);
-#endif           
-                f32 dstR = (f32)((*dst >> 16) & 0xFF);
-                f32 dstG = (f32)((*dst >>  8) & 0xFF);
-                f32 dstB = (f32)((*dst >>  0) & 0xFF);
+            __m128i pixelX = _mm_cvttps_epi32(texX);
+            __m128i pixelY = _mm_cvttps_epi32(texY);
 
-                f32 r = (1.0f - a)*dstR + a*srcR; 
-                f32 g = (1.0f - a)*dstG + a*srcG; 
-                f32 b = (1.0f - a)*dstB + a*srcB; 
+            __m128i texel;
 
-                *dst = ((u32)(r + 0.5f) << 16) | ((u32)(g + 0.5f) << 8) | ((u32)(b + 0.5f) << 0);
-            }
-            ++dst;
+#define M(a, i) ((f32 *)&(a))[i]
+#define Mi(a, i) ((i32 *)&(a))[i]
+#define Mu(a, i) ((u32 *)&(a))[i]
+
+            i32 offset = (-Mi(pixelY, 0) * bitmap->width * BYTES_PER_PIXEL) + Mi(pixelX, 0)*sizeof(u32);
+            u8 *texelPtr = ((u8 *)bitmap->data) + ((bitmap->width *(bitmap->height - 1)) * BYTES_PER_PIXEL);
+            texelPtr += offset;
+            Mu(texel, 0) = *((u32 *)texelPtr);
+
+            offset = (-Mi(pixelY, 1) * bitmap->width * BYTES_PER_PIXEL) + Mi(pixelX, 1)*sizeof(u32);
+            texelPtr = ((u8 *)bitmap->data) + ((bitmap->width *(bitmap->height - 1)) * BYTES_PER_PIXEL);
+            texelPtr += offset;
+            Mu(texel, 1) = *((u32 *)texelPtr);
+
+            offset = (-Mi(pixelY, 2) * bitmap->width * BYTES_PER_PIXEL) + Mi(pixelX, 2)*sizeof(u32);
+            texelPtr = ((u8 *)bitmap->data) + ((bitmap->width *(bitmap->height - 1)) * BYTES_PER_PIXEL);
+            texelPtr += offset;
+            Mu(texel, 2) = *((u32 *)texelPtr);
+
+            offset = (-Mi(pixelY, 3) * bitmap->width * BYTES_PER_PIXEL) + Mi(pixelX, 3)*sizeof(u32);
+            texelPtr = ((u8 *)bitmap->data) + ((bitmap->width *(bitmap->height - 1)) * BYTES_PER_PIXEL);
+            texelPtr += offset;
+            Mu(texel, 3) = *((u32 *)texelPtr);
+            
+
+            __m128 a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 24), u255));
+            __m128 invA =_mm_div_ps(a, f255); 
+
+            __m128 srcR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 16), u255));
+            __m128 srcG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 8), u255));
+            __m128 srcB = _mm_cvtepi32_ps(_mm_and_si128(texel, u255));
+
+            __m128 dstR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(oldTexel, 16), u255));
+            __m128 dstG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(oldTexel, 8), u255));
+            __m128 dstB = _mm_cvtepi32_ps(_mm_and_si128(oldTexel, u255));
+
+            __m128 r = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstR), _mm_mul_ps(invA, srcR));
+            __m128 g = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstG), _mm_mul_ps(invA, srcG));
+            __m128 b = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstB), _mm_mul_ps(invA, srcB));
+            
+            __m128i color = _mm_or_si128(
+                        _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(a), 24), _mm_slli_epi32(_mm_cvtps_epi32(r), 16)),
+                        _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(g),  8), _mm_cvtps_epi32(b))
+                    );
+
+            __m128i maskedColor = _mm_or_si128(_mm_and_si128(mask, color), _mm_andnot_si128(mask, oldTexel));
+            
+            _mm_storeu_si128((__m128i *)dst, maskedColor);
+            dst += 4;
+          
         }
         row += backBuffer->width * BYTES_PER_PIXEL;
     }
@@ -401,7 +389,7 @@ void DrawPixel(GameBackBuffer *backBuffer, f32 x, f32 y, u32 color)
     *colorBuffer = color;
 }
 
-Vec2 MapToIsometricTilemapTile(f32 x, f32 y)
+Vec2 MapTileToIsometric(f32 x, f32 y)
 {
     const f32 HALF_TILE_WIDTH = 64;
     const f32 HALF_TILE_HEIGHT = 32;
@@ -414,7 +402,7 @@ Vec2 MapToIsometricTilemapTile(f32 x, f32 y)
     return result;
 }
 
-Vec2 MapToIsometricTilemap(f32 x, f32 y)
+Vec2 MapEntityToIsometric(f32 x, f32 y)
 {
     const f32 HALF_TILE_WIDTH = 64;
     const f32 HALF_TILE_HEIGHT = 32;
@@ -610,7 +598,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     Vec2 cameraOffset = {(WINDOW_WIDTH*0.1f)*gameState->pixelsToMeters, (WINDOW_HEIGHT*0.1f)*gameState->pixelsToMeters};
     Vec2 playerInCameraSpace = (gameState->playerP - gameState->cameraP);
 
-    Vec2 playerIsometricPosition = MapToIsometricTilemap(playerInCameraSpace.x, playerInCameraSpace.y);
+    Vec2 playerIsometricPosition = MapEntityToIsometric(playerInCameraSpace.x, playerInCameraSpace.y);
 
     u32 *colorBuffer = (u32 *)backBuffer->memory;
     for(i32 y  = 0; y < backBuffer->height; ++y)
@@ -630,8 +618,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             if(tilemapTest[y * 8 + x] == 1)
             {
                 Vec2 pos = (Vec2{(f32)x, (f32)y} - gameState->cameraP);
-                Vec2 tileIsometricPosition = MapToIsometricTilemapTile(pos.x, pos.y);
-                RenderTextureQuad(backBuffer, &gameState->smallTileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 64);
+                Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y);
+                RenderTextureQuad(backBuffer, &gameState->tileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
             }
         }
     }
@@ -643,7 +631,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         {
             if(tilemapTest[y * 8 + x] == 1)
             {
-                Vec2 pos = (Vec2{x * (f32)gameState->tileSizeInMeters, y * (f32)gameState->tileSizeInMeters} - gameState->cameraP) + Vec2{3, 3} * gameState->tileSizeInMeters;
+                Vec2 pos = (Vec2{x * (f32)gameState->tileSizeInMeters, y * (f32)gameState->tileSizeInMeters} - gameState->cameraP) + Vec2{4, 4} * gameState->tileSizeInMeters;
                 DrawRectangle(backBuffer, pos.x*gameState->metersToPixels, pos.y*gameState->metersToPixels,
                               (pos.x + gameState->tileSizeInMeters)*gameState->metersToPixels,
                               (pos.y + gameState->tileSizeInMeters)*gameState->metersToPixels,
@@ -651,7 +639,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             }
         }
     }
-    Vec2 playerMiniMap = playerInCameraSpace + Vec2{3, 3} * gameState->tileSizeInMeters;
+    Vec2 playerMiniMap = playerInCameraSpace + Vec2{4, 4} * gameState->tileSizeInMeters;
     DrawRectangle(backBuffer,
                  (playerMiniMap.x*gameState->metersToPixels) - (gameState->playerW*0.5f)*gameState->metersToPixels,
                  (playerMiniMap.y*gameState->metersToPixels) - (gameState->playerH*0.5f)*gameState->metersToPixels,

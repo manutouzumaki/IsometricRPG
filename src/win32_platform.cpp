@@ -347,6 +347,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
 
     while(globalRunning)
     {                
+#if 1
         LARGE_INTEGER workCounter = {};
         QueryPerformanceCounter(&workCounter);
         f64 secondsElapsed = (f64)(workCounter.QuadPart - lastCounter.QuadPart) * invFrequency;
@@ -357,7 +358,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
             QueryPerformanceCounter(&workCounter);
             secondsElapsed = (f64)(workCounter.QuadPart - lastCounter.QuadPart) * invFrequency;
         }
-
+#endif
         LARGE_INTEGER currentCounter = {};
         QueryPerformanceCounter(&currentCounter);
         f64 fps = (f64)frequency.QuadPart / (f64)(currentCounter.QuadPart - lastCounter.QuadPart);
