@@ -35,7 +35,7 @@ typedef bool b8;
 
 #define EXPORT_TO_PLATORM extern "C" __declspec(dllexport)
 
-#define FPS 30.0f
+#define FPS 60.0f
 #define TARGET_SECONDS_PER_FRAME (1.0f / FPS)
 
 #define PI 3.14159265359f

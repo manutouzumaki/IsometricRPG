@@ -357,7 +357,6 @@ void RenderTextureQuad(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 posX, f32
             
             _mm_storeu_si128((__m128i *)dst, maskedColor);
             dst += 4;
-          
         }
         row += backBuffer->width * BYTES_PER_PIXEL;
     }
@@ -387,6 +386,17 @@ void DrawPixel(GameBackBuffer *backBuffer, f32 x, f32 y, u32 color)
     
     u32 *colorBuffer = (u32 *)backBuffer->memory + py * backBuffer->width + px;
     *colorBuffer = color;
+}
+
+void ClearScreen(GameBackBuffer *backBuffer, u32 color)
+{
+    u32 *colorBuffer = (u32 *)backBuffer->memory;
+    __m128i pixelColor = _mm_set1_epi32(color);
+    for(i32 i = 0; i < backBuffer->width*backBuffer->height; i += 4)
+    {
+        _mm_storeu_si128((__m128i *)colorBuffer, pixelColor);
+        colorBuffer += 4;
+    }
 }
 
 Vec2 MapTileToIsometric(f32 x, f32 y)
@@ -500,7 +510,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 Vec2 contactNormal = {};
                 Vec2 rayDirection = gameState->playerDP * input->deltaTime;
     
-
                 f32 invDirX = 1.0f / rayDirection.x;
                 f32 invDirY = 1.0f / rayDirection.y;
 
@@ -600,16 +609,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     Vec2 playerIsometricPosition = MapEntityToIsometric(playerInCameraSpace.x, playerInCameraSpace.y);
 
-    u32 *colorBuffer = (u32 *)backBuffer->memory;
-    for(i32 y  = 0; y < backBuffer->height; ++y)
-    {
-        for(i32 x = 0; x < backBuffer->width; ++x)
-        {
-            colorBuffer[y * backBuffer->width + x] = 0xFF00AAAA;
-        }
-    }
-
-
+    ClearScreen(backBuffer, 0xFF003333);
 
     for(i32 y = 0; y < 8; ++y)
     {
@@ -623,6 +623,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             }
         }
     }
+
     RenderTextureQuad(backBuffer, &gameState->entityBitmap, playerIsometricPosition.x - (32+16+8), playerIsometricPosition.y - (96+16), 128, 128);
     
     for(i32 y = 0; y < 8; ++y)

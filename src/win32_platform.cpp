@@ -314,6 +314,7 @@ void PullWndMessages(InputState *currInput)
 
 i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, i32 cmdShow)
 {
+
     LARGE_INTEGER frequency = {};
     QueryPerformanceFrequency(&frequency);
     f64 invFrequency = 1.0f / (f64)frequency.QuadPart;
@@ -347,14 +348,14 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
 
     while(globalRunning)
     {                
-#if 1
+#if 0
         LARGE_INTEGER workCounter = {};
         QueryPerformanceCounter(&workCounter);
         f64 secondsElapsed = (f64)(workCounter.QuadPart - lastCounter.QuadPart) * invFrequency;
         while(secondsElapsed < TARGET_SECONDS_PER_FRAME)
         {
-            u32 milisecondsToSleep = (u32)((TARGET_SECONDS_PER_FRAME - secondsElapsed) * 1000.0f);
-            Sleep(milisecondsToSleep);  
+            //u32 milisecondsToSleep = (u32)((TARGET_SECONDS_PER_FRAME - secondsElapsed) * 1000.0f);
+            //Sleep(milisecondsToSleep);  
             QueryPerformanceCounter(&workCounter);
             secondsElapsed = (f64)(workCounter.QuadPart - lastCounter.QuadPart) * invFrequency;
         }
