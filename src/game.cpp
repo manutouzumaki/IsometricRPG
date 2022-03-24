@@ -9,9 +9,19 @@ struct Rect2
     Vec2 dimensions;
 };
 
+
+struct Entity
+{
+    u32 id;
+    Vec2 position;
+    Vec2 dimensions;
+    b8 collides;
+};
+
 struct GameState
 {
     Arena bitmapArena;
+    Arena entitiesArena;
 
     Bitmap tileBitmap;
     Bitmap smallTileBitmap;
@@ -32,19 +42,21 @@ struct GameState
     i32 tileSizeInPixels;
     f32 metersToPixels;
     f32 pixelsToMeters;
+    
+    u32 entityCount;
+    Entity *entities;
 };
-
 
 global_variable i32 tilemapTest[] = {
 
-    0, 0, 0, 0, 0, 0, 0, 0, 
-    0, 1, 1, 1, 1, 1, 1, 0, 
-    0, 1, 1, 1, 0, 1, 1, 0, 
-    0, 1, 1, 1, 1, 1, 1, 0, 
-    0, 1, 1, 0, 1, 0, 1, 0, 
+    0, 0, 0, 1, 1, 0, 0, 0, 
     0, 1, 1, 1, 1, 1, 1, 0, 
     0, 1, 1, 1, 1, 1, 1, 0, 
-    0, 0, 0, 0, 0, 0, 0, 0, 
+    1, 1, 1, 0, 0, 1, 1, 1, 
+    1, 1, 1, 0, 0, 1, 1, 1, 
+    0, 1, 1, 1, 1, 1, 1, 0, 
+    0, 1, 1, 1, 1, 1, 1, 0, 
+    0, 0, 0, 1, 1, 0, 0, 0, 
 
 };
 
@@ -277,7 +289,7 @@ void RenderTextureQuad(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 posX, f32
     for(i32 y = (i32)minY; y < maxY; ++y)
     {
         u32 *dst = (u32 *)row;
-        for(i32 x = (i32)minX; x < maxX; x += 4)
+        for(i32 x = (i32)minX; x < (maxX - 3); x += 4)
         {
 
             __m128i oldTexel = _mm_loadu_si128((__m128i *)dst);
@@ -425,6 +437,15 @@ Vec2 MapEntityToIsometric(f32 x, f32 y)
     return result;
 }
 
+u8 *GetFirstElement_(void *array, i32 count, i32 elementSize)
+{
+    u8 *result = (u8 *)array;
+    result -= ((count - 1) * elementSize);
+    return result;
+}
+
+#define GetFirstElement(array, count, type) (type *)GetFirstElement_((void *)(array), count, sizeof(type))
+
 // TODO(manuto): delete, this is just for debugin on windows
 ////////////////////////////////////////////////////////////
 #include <windows.h>                                      //
@@ -440,6 +461,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         memory->used = sizeof(GameState);
         
         InitArena(memory, Kilobyte(50), &gameState->bitmapArena);
+        InitArena(memory, Megabyte(100), &gameState->entitiesArena);
 
         gameState->tileBitmap = DEBUG_LoadBitmap("../assets/tile.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
         gameState->entityBitmap = DEBUG_LoadBitmap("../assets/entity.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
@@ -447,17 +469,33 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->treeBitmap = DEBUG_LoadBitmap("../assets/tree.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
    
         gameState->tileSizeInMeters = 1.0f;
-        gameState->tileSizeInPixels = 32;
+        gameState->tileSizeInPixels = 8;
         gameState->metersToPixels = (f32)gameState->tileSizeInPixels / gameState->tileSizeInMeters;
         gameState->pixelsToMeters = gameState->tileSizeInMeters / (f32)gameState->tileSizeInPixels;
 
-        gameState->cameraP.x = 2.0f;
-        gameState->cameraP.y = 2.0f;
 
-        gameState->playerP.x = 2.0f;
-        gameState->playerP.y = 2.0f;
+        gameState->playerP.x = 11.0f;
+        gameState->playerP.y = 11.0f;
         gameState->playerW = gameState->tileSizeInMeters*0.2f;
         gameState->playerH = gameState->tileSizeInMeters*0.2f;
+
+        gameState->entityCount = 0;
+
+        // TODO(manuto): create entities for the tiles
+        for(i32 y = 0; y < 64; ++y)
+        {
+            for(i32 x = 0; x < 64; ++x)
+            {
+                Entity *entity = PushStruct(&gameState->entitiesArena, Entity);
+                entity->position.x = (f32)x;
+                entity->position.y = (f32)y;
+                entity->dimensions.x = gameState->tileSizeInMeters;
+                entity->dimensions.y = gameState->tileSizeInMeters;
+                entity->collides = (tilemapTest[(y%8)*8+(x%8)] == 0);
+                gameState->entities = entity;
+                ++gameState->entityCount;
+            }
+        }
 
         memory->initialized = true;
     }
@@ -497,108 +535,109 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     Vec2 playerDelta = {};
 
-    // TODO(manuto): New Axis aligned collision detection
-    for(i32 y = 0; y < 8; ++y)
+    Entity *firstEntity = GetFirstElement(gameState->entities, gameState->entityCount, Entity);
+
+    for(u32 index = 0; index < gameState->entityCount; ++index)
     {
-        for(i32 x = 0; x < 8; ++x)
+        Entity *entity = firstEntity + index;
+        f32 distance = Vec2LengthSq(entity->position - gameState->playerP);
+        if(entity->collides && distance < 4.0f)
         {
-            if(tilemapTest[y * 8 + x] == 0)
-            {
-                Rect2 rect = {};
-                rect.position = {(f32)x * gameState->tileSizeInMeters - (gameState->playerW*0.5f), (f32)y * gameState->tileSizeInMeters - (gameState->playerH*0.5f)};
-                rect.dimensions = {gameState->tileSizeInMeters + gameState->playerW, gameState->tileSizeInMeters + gameState->playerH};
-                Vec2 contactNormal = {};
-                Vec2 rayDirection = gameState->playerDP * input->deltaTime;
+            Rect2 rect = {};
+            rect.position = {floorf(entity->position.x) * gameState->tileSizeInMeters - (gameState->playerW*0.5f), floorf(entity->position.y) * gameState->tileSizeInMeters - (gameState->playerH*0.5f)};
+            rect.dimensions = {gameState->tileSizeInMeters + gameState->playerW, gameState->tileSizeInMeters + gameState->playerH};
+            Vec2 contactNormal = {};
+            Vec2 rayDirection = gameState->playerDP * input->deltaTime;
     
-                f32 invDirX = 1.0f / rayDirection.x;
-                f32 invDirY = 1.0f / rayDirection.y;
+            f32 invDirX = 1.0f / rayDirection.x;
+            f32 invDirY = 1.0f / rayDirection.y;
 
-                f32 minX = (rect.position.x - gameState->playerP.x) * invDirX; 
-                f32 maxX = ((rect.position.x + rect.dimensions.x) - gameState->playerP.x) * invDirX;
-                
-                f32 minY = (rect.position.y - gameState->playerP.y) * invDirY; 
-                f32 maxY = ((rect.position.y + rect.dimensions.y) - gameState->playerP.y) * invDirY;
-                
-                if (_isnanf(maxY) || _isnanf(maxX))
-                {
-                    continue;
-                }
-                if (_isnanf(minY) || _isnanf(minX))
-                {
-                    continue;
-                }
+            f32 minX = (rect.position.x - gameState->playerP.x) * invDirX; 
+            f32 maxX = ((rect.position.x + rect.dimensions.x) - gameState->playerP.x) * invDirX;
+            
+            f32 minY = (rect.position.y - gameState->playerP.y) * invDirY; 
+            f32 maxY = ((rect.position.y + rect.dimensions.y) - gameState->playerP.y) * invDirY;
+            
+            if (_isnanf(maxY) || _isnanf(maxX))
+            {
+                continue;
+            }
+            if (_isnanf(minY) || _isnanf(minX))
+            {
+                continue;
+            }
 
-                if(minX > maxX) SwapF32(&minX, &maxX);
-                if(minY > maxY) SwapF32(&minY, &maxY);
+            if(minX > maxX) SwapF32(&minX, &maxX);
+            if(minY > maxY) SwapF32(&minY, &maxY);
 
-                if(minX > maxY || minY > maxX)
-                {
-                    continue;
-                }
-                
-                f32 tMin = minX > minY ? minX : minY; 
-                f32 tMax = maxX < maxY ? maxX : maxY;
-                
-                if(tMax < 0)
-                {
-                    continue;
-                }
+            if(minX > maxY || minY > maxX)
+            {
+                continue;
+            }
+            
+            f32 tMin = minX > minY ? minX : minY; 
+            f32 tMax = maxX < maxY ? maxX : maxY;
+            
+            if(tMax < 0)
+            {
+                continue;
+            }
 
-                if(minX > minY)
+            if(minX > minY)
+            {
+                if(invDirX < 0.0f)
                 {
-                    if(invDirX < 0.0f)
-                    {
-                        contactNormal = Vec2{1.0f, 0.0f};
-                    }
-                    else
-                    {
-                        contactNormal = Vec2{-1.0f, 0.0f};
-                    }
-                }
-                else if(minX < minY)
-                {
-                    if(invDirY < 0.0f)
-                    {
-                        contactNormal = Vec2{0.0f, 1.0f}; 
-                    }
-                    else
-                    {
-                        contactNormal = Vec2{0.0f, -1.0f}; 
-                    }
+                    contactNormal = Vec2{1.0f, 0.0f};
                 }
                 else
                 {
-                    if(invDirX == invDirY)
-                    {
-                        if(invDirX < 0.0f && invDirY < 0.0f)
-                        {
-                            contactNormal = Vec2{1.0f, 1.0f};
-                        }
-                        else if(invDirX > 0.0f && invDirY > 0.0f)
-                        {
-                            contactNormal = Vec2{-1.0f, -1.0f};
-                        }
-                    }
-                    else if(invDirX == -invDirY)
-                    {
-                        if(invDirX < 0.0f && invDirY > 0.0f)
-                        {
-                            contactNormal = Vec2{1.0f, -1.0f};
-                        }
-                        else if(invDirX > 0.0f && invDirY < 0.0f)
-                        {
-                            contactNormal = Vec2{-1.0f, 1.0f};
-                        }
-                    }
-                }
-
-                if(tMin >= 0.0f && tMin < 1.0f)
-                {
-                    gameState->playerDP = gameState->playerDP + Vec2ElementMul(contactNormal, Vec2{fabsf(gameState->playerDP.x), fabsf(gameState->playerDP.y)}) * (1.0f - tMin);
+                    contactNormal = Vec2{-1.0f, 0.0f};
                 }
             }
+            else if(minX < minY)
+            {
+                if(invDirY < 0.0f)
+                {
+                    contactNormal = Vec2{0.0f, 1.0f}; 
+                }
+                else
+                {
+                    contactNormal = Vec2{0.0f, -1.0f}; 
+                }
+            }
+            else
+            {
+                if(invDirX == invDirY)
+                {
+                    if(invDirX < 0.0f && invDirY < 0.0f)
+                    {
+                        contactNormal = Vec2{1.0f, 1.0f};
+                    }
+                    else if(invDirX > 0.0f && invDirY > 0.0f)
+                    {
+                        contactNormal = Vec2{-1.0f, -1.0f};
+                    }
+                }
+                else if(invDirX == -invDirY)
+                {
+                    if(invDirX < 0.0f && invDirY > 0.0f)
+                    {
+                        contactNormal = Vec2{1.0f, -1.0f};
+                    }
+                    else if(invDirX > 0.0f && invDirY < 0.0f)
+                    {
+                        contactNormal = Vec2{-1.0f, 1.0f};
+                    }
+                }
+            }
+
+            if(tMin >= 0.0f && tMin < 1.0f)
+            {
+                gameState->playerDP = gameState->playerDP + Vec2ElementMul(contactNormal, Vec2{fabsf(gameState->playerDP.x), fabsf(gameState->playerDP.y)}) * (1.0f - tMin);
+            }       
         }
     }
+
     
     gameState->playerP = gameState->playerDP * input->deltaTime + gameState->playerP; 
     
@@ -611,41 +650,47 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     ClearScreen(backBuffer, 0xFF003333);
 
-    for(i32 y = 0; y < 8; ++y)
+    for(u32 index = 0; index < gameState->entityCount; ++index)
     {
-        for(i32 x = 0; x < 8; ++x)
+        Entity *entity = firstEntity + index;
+        if(!entity->collides)
         {
-            if(tilemapTest[y * 8 + x] == 1)
+            f32 distance = Vec2LengthSq(entity->position - gameState->playerP);
+            if(distance < DISTANCE_TO_RENDER)
             {
-                Vec2 pos = (Vec2{(f32)x, (f32)y} - gameState->cameraP);
+                Vec2 pos = entity->position - gameState->cameraP;
                 Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y);
-                RenderTextureQuad(backBuffer, &gameState->tileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
+                RenderTextureQuad(backBuffer, &gameState->smallTileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 64);
             }
         }
     }
 
     RenderTextureQuad(backBuffer, &gameState->entityBitmap, playerIsometricPosition.x - (32+16+8), playerIsometricPosition.y - (96+16), 128, 128);
-    
-    for(i32 y = 0; y < 8; ++y)
+
+#if 1    
+    for(u32 index = 0; index < gameState->entityCount; ++index)
     {
-        for(i32 x = 0; x < 8; ++x)
+        Entity *entity = firstEntity + index;
+        if(!entity->collides)
         {
-            if(tilemapTest[y * 8 + x] == 1)
+            f32 distance = Vec2LengthSq(entity->position - gameState->playerP);
+            if(distance < DISTANCE_TO_RENDER)
             {
-                Vec2 pos = (Vec2{x * (f32)gameState->tileSizeInMeters, y * (f32)gameState->tileSizeInMeters} - gameState->cameraP) + Vec2{4, 4} * gameState->tileSizeInMeters;
+                Vec2 pos = (Vec2{entity->position.x * (f32)gameState->tileSizeInMeters, entity->position.y * (f32)gameState->tileSizeInMeters} - gameState->cameraP) + Vec2{16, 16} * gameState->tileSizeInMeters;
                 DrawRectangle(backBuffer, pos.x*gameState->metersToPixels, pos.y*gameState->metersToPixels,
                               (pos.x + gameState->tileSizeInMeters)*gameState->metersToPixels,
                               (pos.y + gameState->tileSizeInMeters)*gameState->metersToPixels,
                               0xFF00FF00);
-            }
+            }   
         }
     }
-    Vec2 playerMiniMap = playerInCameraSpace + Vec2{4, 4} * gameState->tileSizeInMeters;
+    Vec2 playerMiniMap = playerInCameraSpace + Vec2{16, 16} * gameState->tileSizeInMeters;
     DrawRectangle(backBuffer,
                  (playerMiniMap.x*gameState->metersToPixels) - (gameState->playerW*0.5f)*gameState->metersToPixels,
                  (playerMiniMap.y*gameState->metersToPixels) - (gameState->playerH*0.5f)*gameState->metersToPixels,
                  (playerMiniMap.x*gameState->metersToPixels) + (gameState->playerW*0.5f)*gameState->metersToPixels,
                  (playerMiniMap.y*gameState->metersToPixels) + (gameState->playerH*0.5f)*gameState->metersToPixels,
                  0xFFFF0000);
+#endif
     
 }

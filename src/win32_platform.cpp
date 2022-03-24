@@ -347,19 +347,24 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
     QueryPerformanceCounter(&lastCounter);
 
     while(globalRunning)
-    {                
-#if 0
+    {               
         LARGE_INTEGER workCounter = {};
         QueryPerformanceCounter(&workCounter);
-        f64 secondsElapsed = (f64)(workCounter.QuadPart - lastCounter.QuadPart) * invFrequency;
+        u64 deltaWork = workCounter.QuadPart - lastCounter.QuadPart;
+        f32 secondsElapsed = ((f32)deltaWork * (f32)invFrequency);
+/*
         while(secondsElapsed < TARGET_SECONDS_PER_FRAME)
         {
-            //u32 milisecondsToSleep = (u32)((TARGET_SECONDS_PER_FRAME - secondsElapsed) * 1000.0f);
-            //Sleep(milisecondsToSleep);  
-            QueryPerformanceCounter(&workCounter);
-            secondsElapsed = (f64)(workCounter.QuadPart - lastCounter.QuadPart) * invFrequency;
-        }
+            // TODO(manuto): improve Sleep granularity...
+#if 0
+            DWORD milisecondsToSleep = (DWORD)((TARGET_SECONDS_PER_FRAME - secondsElapsed) * 1000.0f);
+            Sleep(milisecondsToSleep);  
 #endif
+            QueryPerformanceCounter(&workCounter);
+            deltaWork = workCounter.QuadPart - lastCounter.QuadPart;
+            secondsElapsed = ((f32)deltaWork * (f32)invFrequency);
+        }
+*/
         LARGE_INTEGER currentCounter = {};
         QueryPerformanceCounter(&currentCounter);
         f64 fps = (f64)frequency.QuadPart / (f64)(currentCounter.QuadPart - lastCounter.QuadPart);

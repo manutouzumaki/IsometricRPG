@@ -39,3 +39,5 @@ typedef bool b8;
 #define TARGET_SECONDS_PER_FRAME (1.0f / FPS)
 
 #define PI 3.14159265359f
+
+#define DISTANCE_TO_RENDER 135.0f 
