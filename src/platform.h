@@ -1,4 +1,5 @@
 #include "defines.h"
+#include <intrin.h>
 
 struct Arena
 {
@@ -121,3 +122,16 @@ struct InputState
 
 #define GAME_UPDATE_AND_RENDER(name) void name(GameMemory *memory, GameBackBuffer *backBuffer, InputState *input)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
+
+enum CycleCounter
+{
+    CycleCounter_GameUpdateAndRender,
+    CycleCounter_RenderTextureQuad,
+    CycleCounter_CollisionCounter,
+    CycleCounter_Count 
+};
+
+extern u64 *DEBUG_pointer;
+
+#define START_CYCLE_COUNTER(id) u64 StartCycleCounter_##id = __rdtsc()
+#define END_CYCLE_COUNTER(id) DEBUG_pointer[CycleCounter_##id] += (__rdtsc() - StartCycleCounter_##id) 

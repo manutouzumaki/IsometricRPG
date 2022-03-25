@@ -40,4 +40,11 @@ typedef bool b8;
 
 #define PI 3.14159265359f
 
-#define DISTANCE_TO_RENDER 135.0f 
+#define DISTANCE_TO_RENDER 12
+#define RADIO_TO_CHECK 135
+#define MAP_SIZE 1000
+
+// SSE2
+#define M(a, i) ((f32 *)&(a))[i]
+#define Mi(a, i) ((i32 *)&(a))[i]
+#define Mu(a, i) ((u32 *)&(a))[i]

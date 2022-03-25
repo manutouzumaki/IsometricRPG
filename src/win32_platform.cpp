@@ -314,6 +314,10 @@ void PullWndMessages(InputState *currInput)
 
 i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, i32 cmdShow)
 {
+    // TODO(manuto): WTF is this doing!!!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    HMODULE ole32Library = LoadLibraryA("ole32.dll");//!!
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     LARGE_INTEGER frequency = {};
     QueryPerformanceFrequency(&frequency);
@@ -352,7 +356,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
         QueryPerformanceCounter(&workCounter);
         u64 deltaWork = workCounter.QuadPart - lastCounter.QuadPart;
         f32 secondsElapsed = ((f32)deltaWork * (f32)invFrequency);
-/*
+
         while(secondsElapsed < TARGET_SECONDS_PER_FRAME)
         {
             // TODO(manuto): improve Sleep granularity...
@@ -364,7 +368,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
             deltaWork = workCounter.QuadPart - lastCounter.QuadPart;
             secondsElapsed = ((f32)deltaWork * (f32)invFrequency);
         }
-*/
+
         LARGE_INTEGER currentCounter = {};
         QueryPerformanceCounter(&currentCounter);
         f64 fps = (f64)frequency.QuadPart / (f64)(currentCounter.QuadPart - lastCounter.QuadPart);

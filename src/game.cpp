@@ -12,7 +12,6 @@ struct Rect2
 
 struct Entity
 {
-    u32 id;
     Vec2 position;
     Vec2 dimensions;
     b8 collides;
@@ -45,7 +44,12 @@ struct GameState
     
     u32 entityCount;
     Entity *entities;
+    
+    // Debug cycle counters ONLY fro
+    u64 counters[CycleCounter_Count];
 };
+
+global_variable u64 *DEBUG_pointer;
 
 global_variable i32 tilemapTest[] = {
 
@@ -210,8 +214,12 @@ void DrawBitmap(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 x, f32 y)
     }
 }
 
+internal
 void RenderTextureQuad(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 posX, f32 poxY, f32 width, f32 height, f32 angle = 0.0f)
 {
+
+    START_CYCLE_COUNTER(RenderTextureQuad);
+
     Vec2 position = {posX, poxY};
     Vec2 right = Vec2Rotate({1, 0}, angle);
     Vec2 down = Vec2Perp(right);
@@ -320,10 +328,6 @@ void RenderTextureQuad(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 posX, f32
 
             __m128i texel;
 
-#define M(a, i) ((f32 *)&(a))[i]
-#define Mi(a, i) ((i32 *)&(a))[i]
-#define Mu(a, i) ((u32 *)&(a))[i]
-
             i32 offset = (-Mi(pixelY, 0) * bitmap->width * BYTES_PER_PIXEL) + Mi(pixelX, 0)*sizeof(u32);
             u8 *texelPtr = ((u8 *)bitmap->data) + ((bitmap->width *(bitmap->height - 1)) * BYTES_PER_PIXEL);
             texelPtr += offset;
@@ -372,8 +376,11 @@ void RenderTextureQuad(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 posX, f32
         }
         row += backBuffer->width * BYTES_PER_PIXEL;
     }
+
+    END_CYCLE_COUNTER(RenderTextureQuad);
 }
 
+internal
 void DrawPixel(GameBackBuffer *backBuffer, f32 x, f32 y, u32 color)
 {
     i32 px = (i32)x;
@@ -400,6 +407,102 @@ void DrawPixel(GameBackBuffer *backBuffer, f32 x, f32 y, u32 color)
     *colorBuffer = color;
 }
 
+internal
+void DrawBitmapVeryVeryFast(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 x, f32 y, f32 width, f32 height)
+{
+    i32 minx = (i32)x;
+    i32 miny = (i32)y;
+    i32 maxx = (i32)x + (i32)width;
+    i32 maxy = (i32)y + (i32)height;
+    
+    i32 offsetX = 0;
+    i32 offsetY = 0;
+    if(minx < 0)
+    {
+        offsetX = -minx;
+        minx = 0;
+    }
+    if(maxx > backBuffer->width)
+    {
+        maxx = backBuffer->width;
+    }
+    if(miny < 0)
+    {
+        offsetY = -miny;
+        miny = 0;
+    }
+    if(maxy > backBuffer->height)
+    {
+        maxy = backBuffer->height;
+    }
+
+    f32 ratioU = (f32)bitmap->width / width;
+    f32 ratioV = (f32)bitmap->height / height;
+
+    u32 *colorBuffer = (u32 *)backBuffer->memory;
+    u32 *srcBuffer = (u32 *)bitmap->data + bitmap->width * (bitmap->height - 1);
+
+    __m128i u255 = _mm_set1_epi32(0xFF);
+    __m128 f255 = _mm_set1_ps(255.0f);
+    __m128 one = _mm_set1_ps(1.0f);
+    
+    i32 counterY = offsetY;
+    for(i32 y = miny; y < maxy; ++y)
+    {
+        i32 counterX = offsetX;
+        for(i32 x = minx; x < (maxx - 3); x += 4)
+        {
+            u32 *dst = colorBuffer + (y * backBuffer->width + x);
+            __m128i oldTexel = _mm_loadu_si128((__m128i *)dst);
+            __m128i texel;
+            
+            i32 texY = (i32)(counterY * ratioV);
+
+            i32 texX = (i32)((f32)(counterX + 0) * ratioU);
+            Mu(texel, 0) = *(srcBuffer + (-texY * (i32)bitmap->width + texX));
+
+            texX = (i32)((f32)(counterX + 1) * ratioU);
+            Mu(texel, 1) = *(srcBuffer + (-texY * (i32)bitmap->width + texX));
+
+            
+            texX = (i32)((f32)(counterX + 2) * ratioU);
+            Mu(texel, 2) = *(srcBuffer + (-texY * (i32)bitmap->width + texX));
+
+
+            texX = (i32)((f32)(counterX + 3) * ratioU);
+            Mu(texel, 3) = *(srcBuffer + (-texY * (i32)bitmap->width + texX));
+
+            if(_mm_movemask_epi8(texel))
+            {
+                __m128 a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 24), u255));
+                __m128 invA =_mm_div_ps(a, f255); 
+
+                __m128 srcR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 16), u255));
+                __m128 srcG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 8), u255));
+                __m128 srcB = _mm_cvtepi32_ps(_mm_and_si128(texel, u255));
+
+                __m128 dstR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(oldTexel, 16), u255));
+                __m128 dstG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(oldTexel, 8), u255));
+                __m128 dstB = _mm_cvtepi32_ps(_mm_and_si128(oldTexel, u255));
+
+                __m128 r = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstR), _mm_mul_ps(invA, srcR));
+                __m128 g = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstG), _mm_mul_ps(invA, srcG));
+                __m128 b = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstB), _mm_mul_ps(invA, srcB));
+                
+                __m128i color = _mm_or_si128(
+                            _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(a), 24), _mm_slli_epi32(_mm_cvtps_epi32(r), 16)),
+                            _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(g),  8), _mm_cvtps_epi32(b))
+                        );
+
+                _mm_storeu_si128((__m128i *)dst, color);
+            }
+            counterX += 4; 
+        }
+        ++counterY;
+    }
+}
+
+internal
 void ClearScreen(GameBackBuffer *backBuffer, u32 color)
 {
     u32 *colorBuffer = (u32 *)backBuffer->memory;
@@ -411,6 +514,7 @@ void ClearScreen(GameBackBuffer *backBuffer, u32 color)
     }
 }
 
+internal
 Vec2 MapTileToIsometric(f32 x, f32 y)
 {
     const f32 HALF_TILE_WIDTH = 64;
@@ -424,6 +528,7 @@ Vec2 MapTileToIsometric(f32 x, f32 y)
     return result;
 }
 
+internal
 Vec2 MapEntityToIsometric(f32 x, f32 y)
 {
     const f32 HALF_TILE_WIDTH = 64;
@@ -437,6 +542,7 @@ Vec2 MapEntityToIsometric(f32 x, f32 y)
     return result;
 }
 
+internal
 u8 *GetFirstElement_(void *array, i32 count, i32 elementSize)
 {
     u8 *result = (u8 *)array;
@@ -455,6 +561,8 @@ u8 *GetFirstElement_(void *array, i32 count, i32 elementSize)
 EXPORT_TO_PLATORM 
 GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
+    START_CYCLE_COUNTER(GameUpdateAndRender);
+
     GameState *gameState = (GameState *)memory->data;
     if(!memory->initialized)
     {
@@ -462,6 +570,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         
         InitArena(memory, Kilobyte(50), &gameState->bitmapArena);
         InitArena(memory, Megabyte(100), &gameState->entitiesArena);
+        
+        DEBUG_pointer = gameState->counters;
 
         gameState->tileBitmap = DEBUG_LoadBitmap("../assets/tile.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
         gameState->entityBitmap = DEBUG_LoadBitmap("../assets/entity.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
@@ -474,26 +584,29 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->pixelsToMeters = gameState->tileSizeInMeters / (f32)gameState->tileSizeInPixels;
 
 
-        gameState->playerP.x = 11.0f;
-        gameState->playerP.y = 11.0f;
+        gameState->playerP.x = 2.0f;
+        gameState->playerP.y = 2.0f;
         gameState->playerW = gameState->tileSizeInMeters*0.2f;
         gameState->playerH = gameState->tileSizeInMeters*0.2f;
 
         gameState->entityCount = 0;
 
         // TODO(manuto): create entities for the tiles
-        for(i32 y = 0; y < 64; ++y)
+        for(i32 y = 0; y < MAP_SIZE; ++y)
         {
-            for(i32 x = 0; x < 64; ++x)
+            for(i32 x = 0; x < MAP_SIZE; ++x)
             {
-                Entity *entity = PushStruct(&gameState->entitiesArena, Entity);
-                entity->position.x = (f32)x;
-                entity->position.y = (f32)y;
-                entity->dimensions.x = gameState->tileSizeInMeters;
-                entity->dimensions.y = gameState->tileSizeInMeters;
-                entity->collides = (tilemapTest[(y%8)*8+(x%8)] == 0);
-                gameState->entities = entity;
-                ++gameState->entityCount;
+                if(tilemapTest[(y%8)*8+(x%8)] == 0)
+                {
+                    Entity *entity = PushStruct(&gameState->entitiesArena, Entity);
+                    entity->position.x = (f32)x;
+                    entity->position.y = (f32)y;
+                    entity->dimensions.x = gameState->tileSizeInMeters;
+                    entity->dimensions.y = gameState->tileSizeInMeters;
+                    entity->collides = 1;//(tilemapTest[(y%8)*8+(x%8)] == 0);
+                    gameState->entities = entity;
+                    ++gameState->entityCount;
+                }
             }
         }
 
@@ -535,8 +648,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     Vec2 playerDelta = {};
 
+    START_CYCLE_COUNTER(CollisionCounter);
+    
     Entity *firstEntity = GetFirstElement(gameState->entities, gameState->entityCount, Entity);
-
     for(u32 index = 0; index < gameState->entityCount; ++index)
     {
         Entity *entity = firstEntity + index;
@@ -637,6 +751,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             }       
         }
     }
+    
+    END_CYCLE_COUNTER(CollisionCounter);
 
     
     gameState->playerP = gameState->playerDP * input->deltaTime + gameState->playerP; 
@@ -650,6 +766,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     ClearScreen(backBuffer, 0xFF003333);
 
+#if 0
     for(u32 index = 0; index < gameState->entityCount; ++index)
     {
         Entity *entity = firstEntity + index;
@@ -664,10 +781,55 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             }
         }
     }
+#else
+        i32 playerTileX = (i32)floorf(gameState->playerP.x);
+        i32 playerTileY = (i32)floorf(gameState->playerP.y);
+        
+        i32 minX = playerTileX - DISTANCE_TO_RENDER;
+        if(minX < 0)
+        {
+            minX = 0;
+        }
+        i32 maxX = playerTileX + DISTANCE_TO_RENDER;
+        if(maxX > MAP_SIZE)
+        {
+            maxX = MAP_SIZE;
+        }
+        i32 minY = playerTileY - DISTANCE_TO_RENDER;
+        if(minY < 0)
+        {
+            minY = 0;
+        }
+        i32 maxY = playerTileY + DISTANCE_TO_RENDER;
+        if(maxY > MAP_SIZE)
+        {
+            maxY = MAP_SIZE;
+        }
 
+        for(i32 y = minY; y < maxY; ++y)
+        {
+            for(i32 x = minX; x < maxX; ++x)
+            {
+                if(tilemapTest[(y%8)*8+(x%8)] == 1)
+                {
+                    Vec2 entityPos = Vec2{(f32)x, (f32)y};
+                    Vec2 pos = entityPos - gameState->cameraP;
+                    Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y);
+                    //RenderTextureQuad(backBuffer, &gameState->tileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
+                    DrawBitmapVeryVeryFast(backBuffer, &gameState->tileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
+                    
+                    //DrawBitmap(backBuffer, &gameState->tileBitmap, tileIsometricPosition.x, tileIsometricPosition.y);
+
+
+                }
+            }
+        }
+#endif
     RenderTextureQuad(backBuffer, &gameState->entityBitmap, playerIsometricPosition.x - (32+16+8), playerIsometricPosition.y - (96+16), 128, 128);
 
-#if 1    
+
+
+#if 0  
     for(u32 index = 0; index < gameState->entityCount; ++index)
     {
         Entity *entity = firstEntity + index;
@@ -684,6 +846,30 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             }   
         }
     }
+#else
+        for(i32 y = minY; y < maxY; ++y)
+        {
+            for(i32 x = minX; x < maxX; ++x)
+            {
+
+                if(tilemapTest[(y%8)*8+(x%8)] == 1)
+                {
+                    Vec2 entityPos = Vec2{(f32)x, (f32)y};
+                    f32 distance = Vec2LengthSq(entityPos - gameState->playerP);
+                    if(distance < RADIO_TO_CHECK)
+                    {
+                        Vec2 pos = (Vec2{entityPos.x * (f32)gameState->tileSizeInMeters, entityPos.y * (f32)gameState->tileSizeInMeters} - gameState->cameraP) + Vec2{16, 16} * gameState->tileSizeInMeters;
+                        DrawRectangle(backBuffer, pos.x*gameState->metersToPixels, pos.y*gameState->metersToPixels,
+                                      (pos.x + gameState->tileSizeInMeters)*gameState->metersToPixels,
+                                      (pos.y + gameState->tileSizeInMeters)*gameState->metersToPixels,
+                                      0xFF00FF00);
+                    }
+                }
+            }
+        }
+#endif
+
+
     Vec2 playerMiniMap = playerInCameraSpace + Vec2{16, 16} * gameState->tileSizeInMeters;
     DrawRectangle(backBuffer,
                  (playerMiniMap.x*gameState->metersToPixels) - (gameState->playerW*0.5f)*gameState->metersToPixels,
@@ -691,6 +877,16 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                  (playerMiniMap.x*gameState->metersToPixels) + (gameState->playerW*0.5f)*gameState->metersToPixels,
                  (playerMiniMap.y*gameState->metersToPixels) + (gameState->playerH*0.5f)*gameState->metersToPixels,
                  0xFFFF0000);
-#endif
+
     
+    END_CYCLE_COUNTER(GameUpdateAndRender);
+    
+    for(i32 i = 0; i < CycleCounter_Count; ++i)
+    {
+        char buffer[100];
+        sprintf_s(buffer, "%d) cycle per frame: %I64u\n", i, gameState->counters[i]);
+        OutputDebugString(buffer);
+        gameState->counters[i] = 0;
+    }
+
 }
