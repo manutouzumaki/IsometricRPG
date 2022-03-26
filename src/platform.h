@@ -128,6 +128,7 @@ enum CycleCounter
     CycleCounter_GameUpdateAndRender,
     CycleCounter_RenderTextureQuad,
     CycleCounter_CollisionCounter,
+    CycleCounter_DrawBitmapVeryVeryFast,
     CycleCounter_Count 
 };
 

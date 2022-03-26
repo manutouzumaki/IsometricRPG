@@ -3,11 +3,11 @@
 #include <xmmintrin.h>
 #include <emmintrin.h>
 
-struct Rect2
-{
-    Vec2 position;
-    Vec2 dimensions;
-};
+// TODO(manuto): delete, this is just for debugin on windows
+////////////////////////////////////////////////////////////
+#include <windows.h>                                      //
+#include <stdio.h>                                        //
+////////////////////////////////////////////////////////////
 
 
 struct Entity
@@ -17,15 +17,30 @@ struct Entity
     b8 collides;
 };
 
+#include "world.cpp"
+
+struct Rect2
+{
+    Vec2 position;
+    Vec2 dimensions;
+};
+
+
+
+
 struct GameState
 {
     Arena bitmapArena;
     Arena entitiesArena;
+    Arena worldArena;
 
     Bitmap tileBitmap;
     Bitmap smallTileBitmap;
     Bitmap entityBitmap;
     Bitmap treeBitmap;
+
+    // NOTE(manuto): World test...
+    World world;
 
     // NOTE(manuto): camera test...
     Vec2 cameraP;
@@ -52,16 +67,14 @@ struct GameState
 global_variable u64 *DEBUG_pointer;
 
 global_variable i32 tilemapTest[] = {
-
     0, 0, 0, 1, 1, 0, 0, 0, 
     0, 1, 1, 1, 1, 1, 1, 0, 
-    0, 1, 1, 1, 1, 1, 1, 0, 
-    1, 1, 1, 0, 0, 1, 1, 1, 
-    1, 1, 1, 0, 0, 1, 1, 1, 
-    0, 1, 1, 1, 1, 1, 1, 0, 
+    0, 1, 0, 1, 1, 0, 1, 0, 
+    1, 1, 1, 1, 1, 1, 1, 1, 
+    1, 1, 1, 1, 1, 1, 1, 1, 
+    0, 1, 0, 1, 1, 0, 1, 0, 
     0, 1, 1, 1, 1, 1, 1, 0, 
     0, 0, 0, 1, 1, 0, 0, 0, 
-
 };
 
 void SwapF32(f32 *a, f32 *b)
@@ -348,30 +361,32 @@ void RenderTextureQuad(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 posX, f32
             texelPtr += offset;
             Mu(texel, 3) = *((u32 *)texelPtr);
             
+            if(_mm_movemask_epi8(texel))
+            {
+                __m128 a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 24), u255));
+                __m128 invA =_mm_div_ps(a, f255); 
 
-            __m128 a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 24), u255));
-            __m128 invA =_mm_div_ps(a, f255); 
+                __m128 srcR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 16), u255));
+                __m128 srcG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 8), u255));
+                __m128 srcB = _mm_cvtepi32_ps(_mm_and_si128(texel, u255));
 
-            __m128 srcR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 16), u255));
-            __m128 srcG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(texel, 8), u255));
-            __m128 srcB = _mm_cvtepi32_ps(_mm_and_si128(texel, u255));
+                __m128 dstR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(oldTexel, 16), u255));
+                __m128 dstG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(oldTexel, 8), u255));
+                __m128 dstB = _mm_cvtepi32_ps(_mm_and_si128(oldTexel, u255));
 
-            __m128 dstR = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(oldTexel, 16), u255));
-            __m128 dstG = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(oldTexel, 8), u255));
-            __m128 dstB = _mm_cvtepi32_ps(_mm_and_si128(oldTexel, u255));
+                __m128 r = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstR), _mm_mul_ps(invA, srcR));
+                __m128 g = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstG), _mm_mul_ps(invA, srcG));
+                __m128 b = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstB), _mm_mul_ps(invA, srcB));
+                
+                __m128i color = _mm_or_si128(
+                            _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(a), 24), _mm_slli_epi32(_mm_cvtps_epi32(r), 16)),
+                            _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(g),  8), _mm_cvtps_epi32(b))
+                        );
 
-            __m128 r = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstR), _mm_mul_ps(invA, srcR));
-            __m128 g = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstG), _mm_mul_ps(invA, srcG));
-            __m128 b = _mm_add_ps(_mm_mul_ps(_mm_sub_ps(one, invA), dstB), _mm_mul_ps(invA, srcB));
-            
-            __m128i color = _mm_or_si128(
-                        _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(a), 24), _mm_slli_epi32(_mm_cvtps_epi32(r), 16)),
-                        _mm_or_si128(_mm_slli_epi32(_mm_cvtps_epi32(g),  8), _mm_cvtps_epi32(b))
-                    );
-
-            __m128i maskedColor = _mm_or_si128(_mm_and_si128(mask, color), _mm_andnot_si128(mask, oldTexel));
-            
-            _mm_storeu_si128((__m128i *)dst, maskedColor);
+                __m128i maskedColor = _mm_or_si128(_mm_and_si128(mask, color), _mm_andnot_si128(mask, oldTexel));
+                
+                _mm_storeu_si128((__m128i *)dst, maskedColor);
+            }
             dst += 4;
         }
         row += backBuffer->width * BYTES_PER_PIXEL;
@@ -410,30 +425,33 @@ void DrawPixel(GameBackBuffer *backBuffer, f32 x, f32 y, u32 color)
 internal
 void DrawBitmapVeryVeryFast(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 x, f32 y, f32 width, f32 height)
 {
-    i32 minx = (i32)x;
-    i32 miny = (i32)y;
-    i32 maxx = (i32)x + (i32)width;
-    i32 maxy = (i32)y + (i32)height;
+
+    START_CYCLE_COUNTER(DrawBitmapVeryVeryFast);
+
+    i32 minX = (i32)x;
+    i32 minY = (i32)y;
+    i32 maxX = (i32)x + (i32)width;
+    i32 maxY = (i32)y + (i32)height;
     
     i32 offsetX = 0;
     i32 offsetY = 0;
-    if(minx < 0)
+    if(minX < 0)
     {
-        offsetX = -minx;
-        minx = 0;
+        offsetX = -minX;
+        minX = 0;
     }
-    if(maxx > backBuffer->width)
+    if(maxX > backBuffer->width)
     {
-        maxx = backBuffer->width;
+        maxX = backBuffer->width;
     }
-    if(miny < 0)
+    if(minY < 0)
     {
-        offsetY = -miny;
-        miny = 0;
+        offsetY = -minY;
+        minY = 0;
     }
-    if(maxy > backBuffer->height)
+    if(maxY > backBuffer->height)
     {
-        maxy = backBuffer->height;
+        maxY = backBuffer->height;
     }
 
     f32 ratioU = (f32)bitmap->width / width;
@@ -447,27 +465,25 @@ void DrawBitmapVeryVeryFast(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 x, f
     __m128 one = _mm_set1_ps(1.0f);
     
     i32 counterY = offsetY;
-    for(i32 y = miny; y < maxy; ++y)
+    for(i32 y = minY; y < maxY; ++y)
     {
         i32 counterX = offsetX;
-        for(i32 x = minx; x < (maxx - 3); x += 4)
+        for(i32 x = minX; x < (maxX - 3); x += 4)
         {
             u32 *dst = colorBuffer + (y * backBuffer->width + x);
             __m128i oldTexel = _mm_loadu_si128((__m128i *)dst);
             __m128i texel;
             
             i32 texY = (i32)(counterY * ratioV);
-
+            
             i32 texX = (i32)((f32)(counterX + 0) * ratioU);
             Mu(texel, 0) = *(srcBuffer + (-texY * (i32)bitmap->width + texX));
 
             texX = (i32)((f32)(counterX + 1) * ratioU);
             Mu(texel, 1) = *(srcBuffer + (-texY * (i32)bitmap->width + texX));
-
             
             texX = (i32)((f32)(counterX + 2) * ratioU);
             Mu(texel, 2) = *(srcBuffer + (-texY * (i32)bitmap->width + texX));
-
 
             texX = (i32)((f32)(counterX + 3) * ratioU);
             Mu(texel, 3) = *(srcBuffer + (-texY * (i32)bitmap->width + texX));
@@ -500,6 +516,8 @@ void DrawBitmapVeryVeryFast(GameBackBuffer *backBuffer, Bitmap *bitmap, f32 x, f
         }
         ++counterY;
     }
+
+    END_CYCLE_COUNTER(DrawBitmapVeryVeryFast);
 }
 
 internal
@@ -552,12 +570,6 @@ u8 *GetFirstElement_(void *array, i32 count, i32 elementSize)
 
 #define GetFirstElement(array, count, type) (type *)GetFirstElement_((void *)(array), count, sizeof(type))
 
-// TODO(manuto): delete, this is just for debugin on windows
-////////////////////////////////////////////////////////////
-#include <windows.h>                                      //
-#include <stdio.h>                                        //
-////////////////////////////////////////////////////////////
-
 EXPORT_TO_PLATORM 
 GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
@@ -570,6 +582,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         
         InitArena(memory, Kilobyte(50), &gameState->bitmapArena);
         InitArena(memory, Megabyte(100), &gameState->entitiesArena);
+        InitArena(memory, Kilobyte(50), &gameState->worldArena);
         
         DEBUG_pointer = gameState->counters;
 
@@ -584,8 +597,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->pixelsToMeters = gameState->tileSizeInMeters / (f32)gameState->tileSizeInPixels;
 
 
-        gameState->playerP.x = 2.0f;
-        gameState->playerP.y = 2.0f;
+        gameState->playerP.x = 4.0f;
+        gameState->playerP.y = 4.0f;
         gameState->playerW = gameState->tileSizeInMeters*0.2f;
         gameState->playerH = gameState->tileSizeInMeters*0.2f;
 
@@ -609,6 +622,22 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 }
             }
         }
+
+
+
+        // TODO(manuto): ChunkHashMap Test... lets hope it work :)
+        for(i32 z = 0; z < 8; ++z)
+        {
+            for(i32 y = 0; y < 8; ++y)
+            {
+                for(i32 x = 0; x < 8; ++x)
+                {
+                    AddChunkToHashTable(&gameState->world, &gameState->worldArena, x, y, z);
+                }
+            }
+        }
+
+
 
         memory->initialized = true;
     }
@@ -648,8 +677,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     Vec2 playerDelta = {};
 
+
+///////////////////////////////////////////////////
+// TODO(manuto): Collision System
+///////////////////////////////////////////////////
+
     START_CYCLE_COUNTER(CollisionCounter);
-    
+    Vec2 rayDirection = gameState->playerDP * input->deltaTime;
     Entity *firstEntity = GetFirstElement(gameState->entities, gameState->entityCount, Entity);
     for(u32 index = 0; index < gameState->entityCount; ++index)
     {
@@ -661,7 +695,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             rect.position = {floorf(entity->position.x) * gameState->tileSizeInMeters - (gameState->playerW*0.5f), floorf(entity->position.y) * gameState->tileSizeInMeters - (gameState->playerH*0.5f)};
             rect.dimensions = {gameState->tileSizeInMeters + gameState->playerW, gameState->tileSizeInMeters + gameState->playerH};
             Vec2 contactNormal = {};
-            Vec2 rayDirection = gameState->playerDP * input->deltaTime;
     
             f32 invDirX = 1.0f / rayDirection.x;
             f32 invDirY = 1.0f / rayDirection.y;
@@ -747,13 +780,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
             if(tMin >= 0.0f && tMin < 1.0f)
             {
-                gameState->playerDP = gameState->playerDP + Vec2ElementMul(contactNormal, Vec2{fabsf(gameState->playerDP.x), fabsf(gameState->playerDP.y)}) * (1.0f - tMin);
-            }       
+                Vec2 delta = Vec2ElementMul(contactNormal, Vec2{fabsf(gameState->playerDP.x), fabsf(gameState->playerDP.y)}) * (1.0f - tMin);
+                gameState->playerDP = gameState->playerDP + delta;
+            }  
         }
     }
-    
-    END_CYCLE_COUNTER(CollisionCounter);
 
+    END_CYCLE_COUNTER(CollisionCounter);
     
     gameState->playerP = gameState->playerDP * input->deltaTime + gameState->playerP; 
     
@@ -825,8 +858,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             }
         }
 #endif
-    RenderTextureQuad(backBuffer, &gameState->entityBitmap, playerIsometricPosition.x - (32+16+8), playerIsometricPosition.y - (96+16), 128, 128);
-
+    //RenderTextureQuad(backBuffer, &gameState->entityBitmap, playerIsometricPosition.x - (32+16+8), playerIsometricPosition.y - (96+16), 128, 128);
+    DrawBitmapVeryVeryFast(backBuffer, &gameState->entityBitmap, playerIsometricPosition.x - (32+16+8), playerIsometricPosition.y - (96+16), 128, 128);
 
 
 #if 0  
@@ -880,7 +913,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     
     END_CYCLE_COUNTER(GameUpdateAndRender);
-    
+
+#if 0  
     for(i32 i = 0; i < CycleCounter_Count; ++i)
     {
         char buffer[100];
@@ -888,5 +922,138 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         OutputDebugString(buffer);
         gameState->counters[i] = 0;
     }
+#endif
 
 }
+
+
+///////////////////////////////////////////////////////////////////////////
+// NOTE(manuto): Collision detection with SSE2                           //
+///////////////////////////////////////////////////////////////////////////
+#if 0
+    __m128 one = _mm_set1_ps(1.0f);
+    __m128 negativeOne = _mm_set1_ps(-1.0f);
+    __m128 zero = _mm_set1_ps(0.0f);
+    __m128 rayDirectionX = _mm_set1_ps(gameState->playerDP.x * input->deltaTime);
+    __m128 rayDirectionY = _mm_set1_ps(gameState->playerDP.y * input->deltaTime);
+    __m128 invDirX = _mm_div_ps(one, rayDirectionX);
+    __m128 invDirY = _mm_div_ps(one, rayDirectionY);
+    __m128 dimensionX = _mm_set1_ps(gameState->tileSizeInMeters + gameState->playerW);
+    __m128 dimensionY = _mm_set1_ps(gameState->tileSizeInMeters + gameState->playerH);
+    __m128 playerPX = _mm_set1_ps(gameState->playerP.x);
+    __m128 playerPY = _mm_set1_ps(gameState->playerP.y);
+
+    __m128 absPlayerDPX = _mm_set1_ps(fabsf(gameState->playerDP.x));
+    __m128 absPlayerDPY = _mm_set1_ps(fabsf(gameState->playerDP.y));
+
+
+
+    Entity *firstEntity = GetFirstElement(gameState->entities, gameState->entityCount, Entity);
+    for(u32 index = 0; index < gameState->entityCount; index += 4)
+    {
+        Entity *entity0 = firstEntity + index;
+        Entity *entity1 = firstEntity + index + 1;
+        Entity *entity2 = firstEntity + index + 2;
+        Entity *entity3 = firstEntity + index + 3;
+        
+        __m128 positionX = _mm_set_ps(
+                    entity0->position.x * gameState->tileSizeInMeters - (gameState->playerW*0.5f),
+                    entity1->position.x * gameState->tileSizeInMeters - (gameState->playerW*0.5f),
+                    entity2->position.x * gameState->tileSizeInMeters - (gameState->playerW*0.5f),
+                    entity3->position.x * gameState->tileSizeInMeters - (gameState->playerW*0.5f)
+                ); 
+        __m128 positionY = _mm_set_ps(
+                    entity0->position.y * gameState->tileSizeInMeters - (gameState->playerH*0.5f),
+                    entity1->position.y * gameState->tileSizeInMeters - (gameState->playerH*0.5f),
+                    entity2->position.y * gameState->tileSizeInMeters - (gameState->playerH*0.5f),
+                    entity3->position.y * gameState->tileSizeInMeters - (gameState->playerH*0.5f)
+                ); 
+
+        __m128 minX = _mm_mul_ps(_mm_sub_ps(positionX, playerPX), invDirX); 
+        __m128 maxX = _mm_mul_ps(_mm_sub_ps(_mm_add_ps(positionX, dimensionX), playerPX), invDirX);
+
+        __m128 minY = _mm_mul_ps(_mm_sub_ps(positionY, playerPY), invDirY); 
+        __m128 maxY = _mm_mul_ps(_mm_sub_ps(_mm_add_ps(positionY, dimensionY), playerPY), invDirY);
+        
+        __m128i maskNan = _mm_castps_si128(_mm_and_ps(_mm_cmpord_ps(minY, minX), _mm_cmpord_ps(maxY, maxX)));
+
+        __m128 temp = minX;
+        minX = _mm_min_ps(minX, maxX);
+        maxX = _mm_max_ps(temp, maxX);
+        
+        temp = minY;
+        minY = _mm_min_ps(minY, maxY);
+        maxY = _mm_max_ps(temp, maxY);
+        
+        __m128i maskMinMax = _mm_castps_si128(_mm_and_ps(_mm_cmple_ps(minX, maxY), _mm_cmple_ps(minY, maxX)));
+        
+        __m128 tMin = _mm_max_ps(minX, minY); 
+        __m128 tMax = _mm_min_ps(maxX, maxY);
+        
+        __m128i tMaxMask = _mm_castps_si128(_mm_cmpge_ps(tMax, zero));
+
+        __m128i mask = _mm_and_si128(maskNan, _mm_and_si128(maskMinMax, tMaxMask));
+        if(_mm_movemask_epi8(mask))
+        {     
+            __m128 contactNormalX = _mm_set1_ps(0.0f);
+            __m128 contactNormalY = _mm_set1_ps(0.0f);
+
+            __m128 normalAX = one;
+            __m128 normalAY = zero;
+
+            __m128 normalBX = negativeOne;
+            __m128 normalBY = zero;
+
+            __m128 normalCX = zero;
+            __m128 normalCY = one;
+
+            __m128 normalDX = zero;
+            __m128 normalDY = negativeOne;
+
+            __m128i minXGraterMinY = _mm_castps_si128(_mm_cmpge_ps(minX, minY));
+            __m128i minXLessMinY = _mm_castps_si128(_mm_cmple_ps(minX, minY));
+            __m128i invDirXLessZero = _mm_castps_si128(_mm_cmple_ps(invDirX, zero));
+            __m128i invDirXGraterZero = _mm_castps_si128(_mm_cmpge_ps(invDirX, zero));
+            __m128i invDirYLessZero = _mm_castps_si128(_mm_cmple_ps(invDirY, zero));
+            __m128i invDirYGraterZero = _mm_castps_si128(_mm_cmpge_ps(invDirY, zero));
+
+            __m128i optionA = _mm_and_si128(minXGraterMinY, invDirXLessZero);
+            __m128i optionB = _mm_and_si128(minXGraterMinY, invDirXGraterZero);
+            __m128i optionC = _mm_and_si128(minXLessMinY, invDirYLessZero);
+            __m128i optionD = _mm_and_si128(minXLessMinY, invDirYGraterZero);
+
+            contactNormalX = _mm_add_ps(_mm_and_ps(normalAX, _mm_cvtepi32_ps(optionA)), contactNormalX);
+            contactNormalY = _mm_add_ps(_mm_and_ps(normalAY, _mm_cvtepi32_ps(optionA)), contactNormalY);
+            
+            contactNormalX = _mm_add_ps(_mm_and_ps(normalBX, _mm_cvtepi32_ps(optionB)), contactNormalX);
+            contactNormalY = _mm_add_ps(_mm_and_ps(normalBY, _mm_cvtepi32_ps(optionB)), contactNormalY);
+
+            contactNormalX = _mm_add_ps(_mm_and_ps(normalCX, _mm_cvtepi32_ps(optionC)), contactNormalX);
+            contactNormalY = _mm_add_ps(_mm_and_ps(normalCY, _mm_cvtepi32_ps(optionC)), contactNormalY);
+
+            contactNormalX = _mm_add_ps(_mm_and_ps(normalDX, _mm_cvtepi32_ps(optionD)), contactNormalX);
+            contactNormalY = _mm_add_ps(_mm_and_ps(normalDY, _mm_cvtepi32_ps(optionD)), contactNormalY);
+            
+            __m128i tMinMask = _mm_castps_si128(_mm_and_ps(_mm_cmpge_ps(tMin, zero), _mm_cmple_ps(tMin, one)));
+            if(_mm_movemask_epi8(tMinMask))
+            {
+                __m128 playerDPX = _mm_and_ps(_mm_and_ps(_mm_mul_ps(_mm_mul_ps(contactNormalX, absPlayerDPX), _mm_sub_ps(one, tMin)), _mm_and_ps(_mm_cmpge_ps(tMin, zero), _mm_cmple_ps(tMin, one))), _mm_castsi128_ps(mask) ); 
+                __m128 playerDPY = _mm_and_ps(_mm_and_ps(_mm_mul_ps(_mm_mul_ps(contactNormalY, absPlayerDPY), _mm_sub_ps(one, tMin)), _mm_and_ps(_mm_cmpge_ps(tMin, zero), _mm_cmple_ps(tMin, one))), _mm_castsi128_ps(mask) );
+                
+                i32 stopHere = 0;
+
+                for(i32 i = 0; i < 4; ++i)
+                {
+                    if(M(playerDPX, i) != 0.0f || M(playerDPY, i) != 0.0f)
+                    {
+                        gameState->playerDP.x += M(playerDPX, i);
+                        gameState->playerDP.y += M(playerDPY, i);
+                    }
+                }
+
+            }
+
+
+        }    
+    }
+#endif
