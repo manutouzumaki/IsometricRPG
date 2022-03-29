@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <Windowsx.h>
 #include <xinput.h>
 #include <math.h>
 #include <stdio.h>
@@ -302,6 +303,24 @@ void PullWndMessages(InputState *currInput)
                     }
                 }
             }break;
+            
+            case WM_MOUSEMOVE:
+            {
+                currInput->mouseX = (i32)GET_X_LPARAM(msg.lParam); 
+                currInput->mouseY = (i32)GET_Y_LPARAM(msg.lParam); 
+            }break;
+            case WM_LBUTTONDOWN:
+            case WM_LBUTTONUP:
+            case WM_RBUTTONDOWN:
+            case WM_RBUTTONUP:
+            case WM_MBUTTONDOWN:
+            case WM_MBUTTONUP:
+            {
+                currInput->mouseLeft.isDown = ((msg.wParam & MK_LBUTTON) != 0);
+                currInput->mouseMiddle.isDown = ((msg.wParam & MK_MBUTTON) != 0);
+                currInput->mouseRight.isDown = ((msg.wParam & MK_RBUTTON) != 0);
+            }break;
+
             default:
             {
                 TranslateMessage(&msg);
@@ -386,6 +405,10 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
         {
             currInput->buttons[i].wasDown = false;
         }
+        for(i32 i = 0; i < ArrayCount(currInput->mouseButtons); ++i)
+        {
+            currInput->mouseButtons[i].wasDown = false;
+        }
 
         PullWndMessages(currInput);
         
@@ -413,6 +436,13 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
             if(lastInput->buttons[i].isDown)
             {
                 currInput->buttons[i].wasDown = true; 
+            }
+        }
+        for(i32 i = 0; i < ArrayCount(currInput->mouseButtons); ++i)
+        {   
+            if(lastInput->mouseButtons[i].isDown)
+            {
+                currInput->mouseButtons[i].wasDown = true; 
             }
         }
         

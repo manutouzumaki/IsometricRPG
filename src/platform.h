@@ -97,10 +97,15 @@ struct ButtonState
 struct InputState
 {
     f32 deltaTime;
+    
+    i32 mouseX;
+    i32 mouseY;
+
     f32 leftStickX;
     f32 leftStickY;
     f32 rightStickX;
     f32 rightStickY;
+
     union
     {
         struct
@@ -118,7 +123,32 @@ struct InputState
         }; 
         ButtonState buttons[10];
     };
+    
+    union
+    { 
+        struct
+        {
+            ButtonState mouseLeft;
+            ButtonState mouseMiddle;
+            ButtonState mouseRight;
+        };
+        ButtonState mouseButtons[3];
+    };
+
 };
+
+
+b8 MouseOnClick(ButtonState button)
+{
+    if(button.isDown != button.wasDown)
+    {
+        if(button.isDown)
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 #define GAME_UPDATE_AND_RENDER(name) void name(GameMemory *memory, GameBackBuffer *backBuffer, InputState *input)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);

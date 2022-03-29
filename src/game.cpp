@@ -9,7 +9,6 @@
 #include <stdio.h>                                        //
 ////////////////////////////////////////////////////////////
 
-
 struct Entity
 {
     Vec2 position;
@@ -25,7 +24,13 @@ struct Rect2
     Vec2 dimensions;
 };
 
-
+struct worldPosition
+{
+    i32 x, y, z;
+    i32 zIndex;
+    f32 relativeX;
+    f32 relativeY;
+};
 
 
 struct GameState
@@ -34,10 +39,12 @@ struct GameState
     Arena entitiesArena;
     Arena worldArena;
 
+    Bitmap cursorBitmap;
     Bitmap tileBitmap;
     Bitmap smallTileBitmap;
     Bitmap entityBitmap;
     Bitmap treeBitmap;
+    Bitmap greenBitmap;
 
     // NOTE(manuto): World test...
     World world;
@@ -59,7 +66,7 @@ struct GameState
     
     u32 entityCount;
     Entity *entities;
-    
+
     // Debug cycle counters ONLY fro
     u64 counters[CycleCounter_Count];
 };
@@ -560,6 +567,23 @@ Vec2 MapEntityToIsometric(f32 x, f32 y)
     return result;
 }
 
+internal 
+Vec2 MapIsometricToTile(f32 c, f32 d)
+{
+    const f32 HW = 64;
+    const f32 HH = 32;
+    const f32 a = (WINDOW_WIDTH / 2) - HW;
+    const f32 b = (WINDOW_HEIGHT / 2);
+    
+    f32 y = (d - b - ((c/HW)*HH) + ((a/HW)*HH)) / (2*HH);
+    f32 x = (c/HW) - (a/HW) + y;  
+
+    Vec2 result = {x, y};
+
+    return result;
+ 
+}
+
 internal
 u8 *GetFirstElement_(void *array, i32 count, i32 elementSize)
 {
@@ -569,6 +593,9 @@ u8 *GetFirstElement_(void *array, i32 count, i32 elementSize)
 }
 
 #define GetFirstElement(array, count, type) (type *)GetFirstElement_((void *)(array), count, sizeof(type))
+
+
+#include "worldEditor.cpp"
 
 EXPORT_TO_PLATORM 
 GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
@@ -580,7 +607,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         memory->used = sizeof(GameState);
         
-        InitArena(memory, Kilobyte(50), &gameState->bitmapArena);
+        InitArena(memory, Kilobyte(60), &gameState->bitmapArena);
         InitArena(memory, Megabyte(100), &gameState->entitiesArena);
         InitArena(memory, Kilobyte(50), &gameState->worldArena);
         
@@ -590,12 +617,17 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->entityBitmap = DEBUG_LoadBitmap("../assets/entity.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
         gameState->smallTileBitmap = DEBUG_LoadBitmap("../assets/small_tile.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
         gameState->treeBitmap = DEBUG_LoadBitmap("../assets/tree.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
+        gameState->cursorBitmap = DEBUG_LoadBitmap("../assets/cursor.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
+        gameState->greenBitmap = DEBUG_LoadBitmap("../assets/green.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
    
         gameState->tileSizeInMeters = 1.0f;
-        gameState->tileSizeInPixels = 8;
+        gameState->tileSizeInPixels = 32;
         gameState->metersToPixels = (f32)gameState->tileSizeInPixels / gameState->tileSizeInMeters;
         gameState->pixelsToMeters = gameState->tileSizeInMeters / (f32)gameState->tileSizeInPixels;
+        
 
+        gameState->cameraP.x = 0.0f;
+        gameState->cameraP.y = 0.0f;
 
         gameState->playerP.x = 4.0f;
         gameState->playerP.y = 4.0f;
@@ -623,25 +655,37 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             }
         }
 
-
-
-        // TODO(manuto): ChunkHashMap Test... lets hope it work :)
-        for(i32 z = 0; z < 8; ++z)
-        {
-            for(i32 y = 0; y < 8; ++y)
-            {
-                for(i32 x = 0; x < 8; ++x)
-                {
-                    AddChunkToHashTable(&gameState->world, &gameState->worldArena, x, y, z);
-                }
-            }
-        }
-
-
-
         memory->initialized = true;
     }
-   
+
+    AddEntityToMousePosition(gameState, &gameState->world, input,
+                             &gameState->worldArena, &gameState->entitiesArena,
+                             gameState->cameraP);
+
+    if(input->up.isDown)
+    {
+        gameState->cameraP.y += -10.0f * input->deltaTime; 
+    }
+    if(input->left.isDown)
+    {
+        gameState->cameraP.x += -10.0f * input->deltaTime; 
+    }
+    if(input->down.isDown)
+    {
+        gameState->cameraP.y += 10.0f * input->deltaTime; 
+    }
+    if(input->right.isDown)
+    {
+        gameState->cameraP.x += 10.0f * input->deltaTime; 
+    }
+
+
+    ClearScreen(backBuffer, 0xFF003333);
+
+    DrawMap(backBuffer, gameState, &gameState->world, &gameState->tileBitmap, input);
+
+
+/* 
     Vec2 playerDDP = {}; 
 
     playerDDP.x = input->leftStickX;
@@ -790,7 +834,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     
     gameState->playerP = gameState->playerDP * input->deltaTime + gameState->playerP; 
     
-    gameState->cameraP = gameState->playerP;
+    gameState->cameraP = gameState->playerP; 
 
     Vec2 cameraOffset = {(WINDOW_WIDTH*0.1f)*gameState->pixelsToMeters, (WINDOW_HEIGHT*0.1f)*gameState->pixelsToMeters};
     Vec2 playerInCameraSpace = (gameState->playerP - gameState->cameraP);
@@ -799,68 +843,44 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     ClearScreen(backBuffer, 0xFF003333);
 
-#if 0
-    for(u32 index = 0; index < gameState->entityCount; ++index)
+    i32 cameraTileX = (i32)floorf(gameState->cameraP.x);
+    i32 cameraTileY = (i32)floorf(gameState->cameraP.y);
+    
+    i32 minX = cameraTileX - DISTANCE_TO_RENDER;
+    if(minX < 0)
     {
-        Entity *entity = firstEntity + index;
-        if(!entity->collides)
+        minX = 0;
+    }
+    i32 maxX = cameraTileX + DISTANCE_TO_RENDER;
+    if(maxX > MAP_SIZE)
+    {
+        maxX = MAP_SIZE;
+    }
+    i32 minY = cameraTileY - DISTANCE_TO_RENDER;
+    if(minY < 0)
+    {
+        minY = 0;
+    }
+    i32 maxY = cameraTileY + DISTANCE_TO_RENDER;
+    if(maxY > MAP_SIZE)
+    {
+        maxY = MAP_SIZE;
+    }
+
+    for(i32 y = minY; y < maxY; ++y)
+    {
+        for(i32 x = minX; x < maxX; ++x)
         {
-            f32 distance = Vec2LengthSq(entity->position - gameState->playerP);
-            if(distance < DISTANCE_TO_RENDER)
+            if(tilemapTest[(y%8)*8+(x%8)] == 1)
             {
-                Vec2 pos = entity->position - gameState->cameraP;
+                Vec2 entityPos = Vec2{(f32)x, (f32)y};
+                Vec2 pos = entityPos - gameState->cameraP;
                 Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y);
-                RenderTextureQuad(backBuffer, &gameState->smallTileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 64);
+                DrawBitmapVeryVeryFast(backBuffer, &gameState->tileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
             }
         }
     }
-#else
-        i32 playerTileX = (i32)floorf(gameState->playerP.x);
-        i32 playerTileY = (i32)floorf(gameState->playerP.y);
-        
-        i32 minX = playerTileX - DISTANCE_TO_RENDER;
-        if(minX < 0)
-        {
-            minX = 0;
-        }
-        i32 maxX = playerTileX + DISTANCE_TO_RENDER;
-        if(maxX > MAP_SIZE)
-        {
-            maxX = MAP_SIZE;
-        }
-        i32 minY = playerTileY - DISTANCE_TO_RENDER;
-        if(minY < 0)
-        {
-            minY = 0;
-        }
-        i32 maxY = playerTileY + DISTANCE_TO_RENDER;
-        if(maxY > MAP_SIZE)
-        {
-            maxY = MAP_SIZE;
-        }
-
-        for(i32 y = minY; y < maxY; ++y)
-        {
-            for(i32 x = minX; x < maxX; ++x)
-            {
-                if(tilemapTest[(y%8)*8+(x%8)] == 1)
-                {
-                    Vec2 entityPos = Vec2{(f32)x, (f32)y};
-                    Vec2 pos = entityPos - gameState->cameraP;
-                    Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y);
-                    //RenderTextureQuad(backBuffer, &gameState->tileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
-                    DrawBitmapVeryVeryFast(backBuffer, &gameState->tileBitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
-                    
-                    //DrawBitmap(backBuffer, &gameState->tileBitmap, tileIsometricPosition.x, tileIsometricPosition.y);
-
-
-                }
-            }
-        }
-#endif
-    //RenderTextureQuad(backBuffer, &gameState->entityBitmap, playerIsometricPosition.x - (32+16+8), playerIsometricPosition.y - (96+16), 128, 128);
     DrawBitmapVeryVeryFast(backBuffer, &gameState->entityBitmap, playerIsometricPosition.x - (32+16+8), playerIsometricPosition.y - (96+16), 128, 128);
-
 
 #if 0  
     for(u32 index = 0; index < gameState->entityCount; ++index)
@@ -923,6 +943,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->counters[i] = 0;
     }
 #endif
+*/
 
 }
 
