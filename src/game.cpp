@@ -24,15 +24,6 @@ struct Rect2
     Vec2 dimensions;
 };
 
-struct worldPosition
-{
-    i32 x, y, z;
-    i32 zIndex;
-    f32 relativeX;
-    f32 relativeY;
-};
-
-
 struct GameState
 {
     Arena bitmapArena;
@@ -664,19 +655,19 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if(input->up.isDown)
     {
-        gameState->cameraP.y += -10.0f * input->deltaTime; 
+        gameState->cameraP.y += -200.0f * input->deltaTime; 
     }
     if(input->left.isDown)
     {
-        gameState->cameraP.x += -10.0f * input->deltaTime; 
+        gameState->cameraP.x += -200.0f * input->deltaTime; 
     }
     if(input->down.isDown)
     {
-        gameState->cameraP.y += 10.0f * input->deltaTime; 
+        gameState->cameraP.y += 200.0f * input->deltaTime; 
     }
     if(input->right.isDown)
     {
-        gameState->cameraP.x += 10.0f * input->deltaTime; 
+        gameState->cameraP.x += 200.0f * input->deltaTime; 
     }
 
 

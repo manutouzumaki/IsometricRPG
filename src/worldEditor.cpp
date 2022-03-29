@@ -4,7 +4,41 @@ void AddEntityToMousePosition(GameState *gameState,
                               Arena *chunkArena, Arena *entitiesArena,
                               Vec2 cameraP)
 {
+#if 1
 
+    Vec2 mouseWP = cameraP + Vec2{(f32)input->mouseX - 64, (f32)input->mouseY - 64};
+
+    Vec2 mouseTileP = MapIsometricToTile(mouseWP.x, mouseWP.y);
+
+    /*
+    char buffer[100];
+    sprintf_s(buffer, "worldP x: %f, y: %f\n", mouseTileP.x, mouseTileP.y);
+    OutputDebugString(buffer);
+    */
+
+    if(MouseOnClick(input->mouseLeft))
+    {
+        Chunk *chunk = GetChunkFromPosition(world, 0, 0, 0);
+        if(!chunk)
+        {
+            AddChunkToHashTable(world, chunkArena, 0, 0, 0);
+            chunk = GetChunkFromPosition(world, 0, 0, 0);
+        }
+
+        if(chunk)
+        {
+            if(chunk->entities.count < ArrayCount(chunk->entities.data))
+            {
+                // Add entities...
+                Entity *entity = &chunk->entities.data[chunk->entities.count++];
+                entity->position.x = floorf(mouseTileP.x);
+                entity->position.y = floorf(mouseTileP.y);
+            }
+        }
+    }
+
+
+#else
     Vec2 mouseP = Vec2{(f32)input->mouseX - WINDOW_WIDTH/2, (f32)input->mouseY - WINDOW_HEIGHT/2};
     Vec2 mouseWorldP = cameraP + (mouseP * gameState->pixelsToMeters);    
     
@@ -43,6 +77,7 @@ void AddEntityToMousePosition(GameState *gameState,
             }
         }
     }
+#endif
 
 }
 
@@ -68,8 +103,8 @@ void DrawMap(GameBackBuffer *backBuffer, GameState *gameState, World *world, Bit
                 for(i32 i = 0; i < chunk->entities.count; ++i)
                 {
                     Entity entity = chunk->entities.data[i];
-                    Vec2 pos = entity.position - gameState->cameraP;
-                    Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y);
+                    Vec2 pos = entity.position;
+                    Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y) - gameState->cameraP;
                     DrawBitmapVeryVeryFast(backBuffer, bitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
 
                 }
@@ -77,14 +112,13 @@ void DrawMap(GameBackBuffer *backBuffer, GameState *gameState, World *world, Bit
         }
     }
 
+    
 
-    Vec2 pos = Vec2{(f32)input->mouseX, (f32)input->mouseY};
-    pos = MapIsometricToTile(pos.x, pos.y);
-
-    Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y);
+    Vec2 mouseWP = gameState->cameraP + Vec2{(f32)input->mouseX - 64, (f32)input->mouseY - 64};
+    Vec2 pos = MapIsometricToTile(mouseWP.x, mouseWP.y);
+    Vec2 tileIsometricPosition = MapTileToIsometric(floorf(pos.x), floorf(pos.y)) - gameState->cameraP;
     DrawBitmapVeryVeryFast(backBuffer, bitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
-
-
+    
 
 }
 
