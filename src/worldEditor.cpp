@@ -2,58 +2,21 @@
 void AddEntityToMousePosition(GameState *gameState,
                               World *world, InputState *input,
                               Arena *chunkArena, Arena *entitiesArena,
-                              Vec2 cameraP)
+                              Vec2 cameraP,
+                              GameBackBuffer *backBuffer, Bitmap *bitmap)
 {
-#if 1
+    Vec2 cameraInIsometricSpace = MapEntityToIsometric(cameraP.x, cameraP.y);
+    Vec2 mouseWP = cameraInIsometricSpace + Vec2{(f32)((input->mouseX - 64) - WINDOW_WIDTH*0.5f), (f32)((input->mouseY - 64) - WINDOW_HEIGHT*0.5f)};
+    Vec2 mouseToIsometricP = MapIsometricToTile(mouseWP.x, mouseWP.y);
 
-    Vec2 mouseWP = cameraP + Vec2{(f32)input->mouseX - 64, (f32)input->mouseY - 64};
-
-    Vec2 mouseTileP = MapIsometricToTile(mouseWP.x, mouseWP.y);
-
-    /*
-    char buffer[100];
-    sprintf_s(buffer, "worldP x: %f, y: %f\n", mouseTileP.x, mouseTileP.y);
-    OutputDebugString(buffer);
-    */
-
-    if(MouseOnClick(input->mouseLeft))
-    {
-        Chunk *chunk = GetChunkFromPosition(world, 0, 0, 0);
-        if(!chunk)
-        {
-            AddChunkToHashTable(world, chunkArena, 0, 0, 0);
-            chunk = GetChunkFromPosition(world, 0, 0, 0);
-        }
-
-        if(chunk)
-        {
-            if(chunk->entities.count < ArrayCount(chunk->entities.data))
-            {
-                // Add entities...
-                Entity *entity = &chunk->entities.data[chunk->entities.count++];
-                entity->position.x = floorf(mouseTileP.x);
-                entity->position.y = floorf(mouseTileP.y);
-            }
-        }
-    }
-
-
-#else
-    Vec2 mouseP = Vec2{(f32)input->mouseX - WINDOW_WIDTH/2, (f32)input->mouseY - WINDOW_HEIGHT/2};
-    Vec2 mouseWorldP = cameraP + (mouseP * gameState->pixelsToMeters);    
+    Vec2 chunkP = mouseToIsometricP / CHUNK_SIZE;
     
-    Vec2 chunkP = {
-        floorf(mouseWorldP.x / (CHUNK_SIZE*gameState->tileSizeInMeters)), 
-        floorf(mouseWorldP.y / (CHUNK_SIZE*gameState->tileSizeInMeters)), 
-    };
-    Vec2 mouseRelativeToChunk = mouseWorldP - (chunkP*CHUNK_SIZE);
-
-    i32 chunkX = (i32)chunkP.x;
-    i32 chunkY = (i32)chunkP.y;
+    i32 chunkX = (i32)floorf(chunkP.x);
+    i32 chunkY = (i32)floorf(chunkP.y);
     i32 chunkZ = 0;
 
-    i32 tileX = (i32)floorf(mouseRelativeToChunk.x); 
-    i32 tileY = (i32)floorf(mouseRelativeToChunk.y); 
+    f32 tileRelativeToChunkX = floorf(mouseToIsometricP.x) - (chunkX*CHUNK_SIZE);
+    f32 tileRelativeToChunkY = floorf(mouseToIsometricP.y) - (chunkY*CHUNK_SIZE);
 
     if(MouseOnClick(input->mouseLeft))
     {
@@ -68,16 +31,18 @@ void AddEntityToMousePosition(GameState *gameState,
         {
             if(chunk->entities.count < ArrayCount(chunk->entities.data))
             {
-                // Add entities...
                 Entity *entity = &chunk->entities.data[chunk->entities.count++];
-                entity->position.x = (f32)(chunkX*CHUNK_SIZE + tileX);
-                entity->position.y = (f32)(chunkY*CHUNK_SIZE + tileY);
+                entity->position.x = tileRelativeToChunkX;
+                entity->position.y = tileRelativeToChunkY;
                 entity->dimensions.x = gameState->tileSizeInMeters;
                 entity->dimensions.y = gameState->tileSizeInMeters;
             }
         }
     }
-#endif
+    Vec2 position = {tileRelativeToChunkX, tileRelativeToChunkY};
+    Vec2 pos = (Vec2{(f32)chunkX*CHUNK_SIZE, (f32)chunkY*CHUNK_SIZE} + position) - gameState->cameraP;
+    Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y);
+    DrawBitmapVeryVeryFast(backBuffer, bitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
 
 }
 
@@ -103,27 +68,108 @@ void DrawMap(GameBackBuffer *backBuffer, GameState *gameState, World *world, Bit
                 for(i32 i = 0; i < chunk->entities.count; ++i)
                 {
                     Entity entity = chunk->entities.data[i];
-                    Vec2 pos = entity.position;
-                    Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y) - gameState->cameraP;
+                    Vec2 pos = (Vec2{(f32)chunk->x*CHUNK_SIZE, (f32)chunk->y*CHUNK_SIZE} + entity.position) - gameState->cameraP;
+                    Vec2 tileIsometricPosition = MapTileToIsometric(pos.x, pos.y);//*gameState->pixelsToMeters - gameState->cameraP;
                     DrawBitmapVeryVeryFast(backBuffer, bitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
-
                 }
+
+                
+
+                Vec2 chunkPos = {(f32)(chunk->x*CHUNK_SIZE), (f32)(chunk->y*CHUNK_SIZE)};
+                Vec2 pos = (chunkPos * gameState->tileSizeInMeters - gameState->cameraP) + Vec2{16, 16} * gameState->tileSizeInMeters;
+                DrawRectangle(backBuffer,
+                              pos.x*gameState->metersToPixels,
+                              pos.y*gameState->metersToPixels,
+                              (pos.x + CHUNK_SIZE * gameState->tileSizeInMeters) * gameState->metersToPixels,
+                              (pos.y + CHUNK_SIZE * gameState->tileSizeInMeters) * gameState->metersToPixels,
+                              0xFF335533);
+
+                for(i32 i = 0; i < chunk->entities.count; ++i)
+                {
+
+                    Entity entity = chunk->entities.data[i];
+                    Vec2 entityPos = Vec2{(f32)chunk->x*CHUNK_SIZE, (f32)chunk->y*CHUNK_SIZE} + entity.position;
+                   
+
+                    Vec2 pos = (entityPos * gameState->tileSizeInMeters - gameState->cameraP) + Vec2{16, 16} * gameState->tileSizeInMeters;
+                    DrawRectangle(backBuffer, pos.x*gameState->metersToPixels, pos.y*gameState->metersToPixels,
+                                  (pos.x + gameState->tileSizeInMeters)*gameState->metersToPixels,
+                                  (pos.y + gameState->tileSizeInMeters)*gameState->metersToPixels,
+                                  0xFF00FF00);
+                } 
             }
         }
     }
 
     
-
-    Vec2 mouseWP = gameState->cameraP + Vec2{(f32)input->mouseX - 64, (f32)input->mouseY - 64};
-    Vec2 pos = MapIsometricToTile(mouseWP.x, mouseWP.y);
-    Vec2 tileIsometricPosition = MapTileToIsometric(floorf(pos.x), floorf(pos.y)) - gameState->cameraP;
-    DrawBitmapVeryVeryFast(backBuffer, bitmap, tileIsometricPosition.x, tileIsometricPosition.y, 128, 128);
-    
-
+    Vec2 playerMiniMap = Vec2{16, 16} * gameState->tileSizeInMeters;
+    DrawRectangle(backBuffer,
+                  (playerMiniMap.x*gameState->metersToPixels) - (gameState->playerW*0.5f)*gameState->metersToPixels,
+                  (playerMiniMap.y*gameState->metersToPixels) - (gameState->playerH*0.5f)*gameState->metersToPixels,
+                  (playerMiniMap.x*gameState->metersToPixels) + (gameState->playerW*0.5f)*gameState->metersToPixels,
+                  (playerMiniMap.y*gameState->metersToPixels) + (gameState->playerH*0.5f)*gameState->metersToPixels,
+                  0xFFFF0000);
 }
 
 
 #if 0
+
+/*
+
+                Vec2 pos =  (Vec2{(f32)chunk->x*CHUNK_SIZE, (f32)chunk->y*CHUNK_SIZE} + Vec2{16, 16} * gameState->tileSizeInMeters) * gameState->metersToPixels - gameState->cameraP;
+                DrawRectangle(backBuffer,
+                              pos.x,
+                              pos.y,
+                              pos.x + (CHUNK_SIZE * gameState->tileSizeInMeters * gameState->metersToPixels),
+                              pos.y + (CHUNK_SIZE * gameState->tileSizeInMeters * gameState->metersToPixels),
+                              0xFF335533);
+
+                for(i32 i = 0; i < chunk->entities.count; ++i)
+                {
+
+                    Entity entity = chunk->entities.data[i];
+                    Vec2 entityPos = Vec2{(f32)chunk->x*CHUNK_SIZE, (f32)chunk->y*CHUNK_SIZE} + entity.position;
+                    
+                    f32 distance = Vec2LengthSq(entityPos - gameState->cameraP * gameState->pixelsToMeters);
+                    if(distance < DISTANCE_TO_RENDER)
+                    {
+                        Vec2 pos = ((Vec2{entityPos.x * (f32)gameState->tileSizeInMeters, entityPos.y * (f32)gameState->tileSizeInMeters} + Vec2{16, 16} * gameState->tileSizeInMeters) * gameState->metersToPixels) - gameState->cameraP;
+                        DrawRectangle(backBuffer,
+                                      pos.x,
+                                      pos.y,
+                                      pos.x + (gameState->tileSizeInMeters*gameState->metersToPixels),
+                                      pos.y + (gameState->tileSizeInMeters*gameState->metersToPixels),
+                                      0xFF00FF00);
+                    }
+
+                    Vec2 playerMiniMap = Vec2{16, 16} * gameState->tileSizeInMeters;
+                    DrawRectangle(backBuffer,
+                                  (playerMiniMap.x*gameState->metersToPixels) - (gameState->playerW*0.5f)*gameState->metersToPixels,
+                                  (playerMiniMap.y*gameState->metersToPixels) - (gameState->playerH*0.5f)*gameState->metersToPixels,
+                                  (playerMiniMap.x*gameState->metersToPixels) + (gameState->playerW*0.5f)*gameState->metersToPixels,
+                                  (playerMiniMap.y*gameState->metersToPixels) + (gameState->playerH*0.5f)*gameState->metersToPixels,
+                                  0xFFFF0000);
+
+                    Entity entity = chunk->entities.data[i];
+                    Vec2 pos = entity.position - gameState->cameraP;
+                    DrawRectangle(backBuffer,
+                                  pos.x * gameState->metersToPixels + WINDOW_WIDTH/2,
+                                  pos.y * gameState->metersToPixels + WINDOW_HEIGHT/2,
+                                  (pos.x + gameState->tileSizeInMeters) * gameState->metersToPixels + WINDOW_WIDTH/2,
+                                  (pos.y + gameState->tileSizeInMeters) * gameState->metersToPixels + WINDOW_HEIGHT/2,
+                                  0xFFFF00FF);
+                                  
+                }
+
+
+*/
+
+
+
+
+
+
+
 void DrawMap(GameBackBuffer *backBuffer, GameState *gameState, World *world)
 {
     i32 cameraChunkX = (i32)floorf(gameState->cameraP.x / (CHUNK_SIZE*gameState->tileSizeInMeters));

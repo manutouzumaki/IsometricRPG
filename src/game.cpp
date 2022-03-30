@@ -612,7 +612,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->greenBitmap = DEBUG_LoadBitmap("../assets/green.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
    
         gameState->tileSizeInMeters = 1.0f;
-        gameState->tileSizeInPixels = 32;
+        gameState->tileSizeInPixels = 8;
         gameState->metersToPixels = (f32)gameState->tileSizeInPixels / gameState->tileSizeInMeters;
         gameState->pixelsToMeters = gameState->tileSizeInMeters / (f32)gameState->tileSizeInPixels;
         
@@ -649,34 +649,40 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         memory->initialized = true;
     }
 
-    AddEntityToMousePosition(gameState, &gameState->world, input,
-                             &gameState->worldArena, &gameState->entitiesArena,
-                             gameState->cameraP);
-
+/*
     if(input->up.isDown)
     {
-        gameState->cameraP.y += -200.0f * input->deltaTime; 
+        Vec2 direction = Vec2Rotate({0, -5} ,DegToRad(-45.0f)) * input->deltaTime;
+        gameState->cameraP = gameState->cameraP + direction; 
     }
     if(input->left.isDown)
     {
-        gameState->cameraP.x += -200.0f * input->deltaTime; 
+        Vec2 direction = Vec2Rotate({-5, 0} ,DegToRad(-45.0f)) * input->deltaTime;
+        gameState->cameraP = gameState->cameraP + direction; 
     }
     if(input->down.isDown)
     {
-        gameState->cameraP.y += 200.0f * input->deltaTime; 
+        Vec2 direction = Vec2Rotate({0, 5} ,DegToRad(-45.0f)) * input->deltaTime;
+        gameState->cameraP = gameState->cameraP + direction; 
     }
     if(input->right.isDown)
     {
-        gameState->cameraP.x += 200.0f * input->deltaTime; 
+        Vec2 direction = Vec2Rotate({5, 0} ,DegToRad(-45.0f)) * input->deltaTime;
+        gameState->cameraP = gameState->cameraP + direction; 
     }
 
 
     ClearScreen(backBuffer, 0xFF003333);
-
+    
     DrawMap(backBuffer, gameState, &gameState->world, &gameState->tileBitmap, input);
 
+    AddEntityToMousePosition(gameState, &gameState->world, input,
+                             &gameState->worldArena, &gameState->entitiesArena,
+                             gameState->cameraP,
+                             backBuffer, &gameState->greenBitmap);
+*/
 
-/* 
+/**/
     Vec2 playerDDP = {}; 
 
     playerDDP.x = input->leftStickX;
@@ -701,7 +707,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     const float acceleration = 20.0f;
     if(Vec2Length(playerDDP) > 0.0f)
     {
-        playerDDP = Vec2Rotate(playerDDP, DegToRad(-45.0f));  
+        //playerDDP = Vec2Rotate(playerDDP, DegToRad(-45.0f));  
         Vec2Normalize(&playerDDP);
     }
     playerDDP = playerDDP * acceleration;
@@ -934,7 +940,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->counters[i] = 0;
     }
 #endif
-*/
+/**/
 
 }
 

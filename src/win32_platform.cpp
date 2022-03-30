@@ -371,7 +371,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
 
     while(globalRunning)
     {               
-/*
+
         LARGE_INTEGER workCounter = {};
         QueryPerformanceCounter(&workCounter);
         u64 deltaWork = workCounter.QuadPart - lastCounter.QuadPart;
@@ -379,7 +379,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
         while(secondsElapsed < TARGET_SECONDS_PER_FRAME)
         {
             // TODO(manuto): improve Sleep granularity...
-#if 0
+#if 1
             DWORD milisecondsToSleep = (DWORD)((TARGET_SECONDS_PER_FRAME - secondsElapsed) * 1000.0f);
             Sleep(milisecondsToSleep);  
 #endif
@@ -387,7 +387,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
             deltaWork = workCounter.QuadPart - lastCounter.QuadPart;
             secondsElapsed = ((f32)deltaWork * (f32)invFrequency);
         }
-*/
+
 
         LARGE_INTEGER currentCounter = {};
         QueryPerformanceCounter(&currentCounter);
