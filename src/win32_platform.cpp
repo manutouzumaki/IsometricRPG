@@ -379,7 +379,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
         while(secondsElapsed < TARGET_SECONDS_PER_FRAME)
         {
             // TODO(manuto): improve Sleep granularity...
-#if 1
+#if 0
             DWORD milisecondsToSleep = (DWORD)((TARGET_SECONDS_PER_FRAME - secondsElapsed) * 1000.0f);
             Sleep(milisecondsToSleep);  
 #endif
@@ -395,7 +395,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
 
         currInput->deltaTime = (f32)((f64)(currentCounter.QuadPart - lastCounter.QuadPart) / (f64)frequency.QuadPart);
 
-#if 0    
+#if 1    
         char buffer[100];
         sprintf_s(buffer, "fps: %f\n", fps);
         OutputDebugString(buffer);

@@ -104,6 +104,14 @@ Vec2 Vec2Perp(Vec2 v)
     return result;
 }
 
+Vec2 Vec2Floor(Vec2 v)
+{
+    Vec2 result = {};
+    result.x = floorf(v.x);
+    result.y = floorf(v.y);
+    return result;
+}
+
 f32 DegToRad(f32 degree)
 {
     f32 rad = degree * (PI/180.0f);

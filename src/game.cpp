@@ -9,6 +9,12 @@
 #include <stdio.h>                                        //
 ////////////////////////////////////////////////////////////
 
+struct EntityChunkP
+{
+    Vec2 chunkP;
+    Vec2 relP;
+};
+
 struct Entity
 {
     Vec2 position;
@@ -36,12 +42,14 @@ struct GameState
     Bitmap entityBitmap;
     Bitmap treeBitmap;
     Bitmap greenBitmap;
+    Bitmap fontBitmap;
 
     // NOTE(manuto): World test...
     World world;
 
     // NOTE(manuto): camera test...
     Vec2 cameraP;
+    EntityChunkP cameraChunkP;
     
     // NOTE(manuto): player test...    
     Vec2 playerP;
@@ -586,6 +594,31 @@ u8 *GetFirstElement_(void *array, i32 count, i32 elementSize)
 #define GetFirstElement(array, count, type) (type *)GetFirstElement_((void *)(array), count, sizeof(type))
 
 
+
+void RemapEntityChunkPosition(EntityChunkP *entity)
+{
+    if(entity->relP.x >= (f32)CHUNK_SIZE)
+    {
+        entity->relP.x -= (f32)CHUNK_SIZE;
+        entity->chunkP.x += 1.0f;
+    }
+    if(entity->relP.y >= (f32)CHUNK_SIZE)
+    {
+        entity->relP.y -= (f32)CHUNK_SIZE;
+        entity->chunkP.y += 1.0f;
+    }
+    if(entity->relP.x < 0.0f)
+    {
+        entity->relP.x += (f32)CHUNK_SIZE;
+        entity->chunkP.x -= 1.0f;
+    }
+    if(entity->relP.y < 0.0f)
+    {
+        entity->relP.y += (f32)CHUNK_SIZE;
+        entity->chunkP.y -= 1.0f;
+    }
+}
+
 #include "worldEditor.cpp"
 
 EXPORT_TO_PLATORM 
@@ -598,9 +631,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         memory->used = sizeof(GameState);
         
-        InitArena(memory, Kilobyte(60), &gameState->bitmapArena);
-        InitArena(memory, Megabyte(100), &gameState->entitiesArena);
-        InitArena(memory, Kilobyte(50), &gameState->worldArena);
+        InitArena(memory, Kilobyte(64), &gameState->worldArena);
+        InitArena(memory, Kilobyte(96), &gameState->bitmapArena);
+        InitArena(memory, Megabyte(128), &gameState->entitiesArena);
         
         DEBUG_pointer = gameState->counters;
 
@@ -610,13 +643,18 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->treeBitmap = DEBUG_LoadBitmap("../assets/tree.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
         gameState->cursorBitmap = DEBUG_LoadBitmap("../assets/cursor.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
         gameState->greenBitmap = DEBUG_LoadBitmap("../assets/green.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
+        gameState->fontBitmap = DEBUG_LoadBitmap("../assets/font.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
    
         gameState->tileSizeInMeters = 1.0f;
-        gameState->tileSizeInPixels = 8;
+        gameState->tileSizeInPixels = 32;
         gameState->metersToPixels = (f32)gameState->tileSizeInPixels / gameState->tileSizeInMeters;
         gameState->pixelsToMeters = gameState->tileSizeInMeters / (f32)gameState->tileSizeInPixels;
         
-
+        gameState->cameraChunkP.chunkP.x = 0; 
+        gameState->cameraChunkP.chunkP.y = 0; 
+        gameState->cameraChunkP.relP.x = 0; 
+        gameState->cameraChunkP.relP.y = 0; 
+    
         gameState->cameraP.x = 0.0f;
         gameState->cameraP.y = 0.0f;
 
@@ -649,29 +687,48 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         memory->initialized = true;
     }
 
-/*
+/**/
     if(input->up.isDown)
     {
-        Vec2 direction = Vec2Rotate({0, -5} ,DegToRad(-45.0f)) * input->deltaTime;
-        gameState->cameraP = gameState->cameraP + direction; 
+        Vec2 direction = Vec2Rotate({0, -5} ,DegToRad(0.0f)) * input->deltaTime;
+        gameState->cameraP = gameState->cameraP + direction;
+        gameState->cameraChunkP.relP = gameState->cameraChunkP.relP + direction; 
     }
     if(input->left.isDown)
     {
-        Vec2 direction = Vec2Rotate({-5, 0} ,DegToRad(-45.0f)) * input->deltaTime;
+        Vec2 direction = Vec2Rotate({-5, 0} ,DegToRad(0.0f)) * input->deltaTime;
         gameState->cameraP = gameState->cameraP + direction; 
+        gameState->cameraChunkP.relP = gameState->cameraChunkP.relP + direction; 
     }
     if(input->down.isDown)
     {
-        Vec2 direction = Vec2Rotate({0, 5} ,DegToRad(-45.0f)) * input->deltaTime;
+        Vec2 direction = Vec2Rotate({0, 5} ,DegToRad(0.0f)) * input->deltaTime;
         gameState->cameraP = gameState->cameraP + direction; 
+        gameState->cameraChunkP.relP = gameState->cameraChunkP.relP + direction; 
     }
     if(input->right.isDown)
     {
-        Vec2 direction = Vec2Rotate({5, 0} ,DegToRad(-45.0f)) * input->deltaTime;
+        Vec2 direction = Vec2Rotate({5, 0} ,DegToRad(0.0f)) * input->deltaTime;
         gameState->cameraP = gameState->cameraP + direction; 
+        gameState->cameraChunkP.relP = gameState->cameraChunkP.relP + direction; 
     }
+    
+    RemapEntityChunkPosition(&gameState->cameraChunkP);
 
+    Vec2 cameraPRelToChunk = Vec2Floor(gameState->cameraP / CHUNK_SIZE);
 
+#if 0
+    char buffer[100];
+    sprintf_s(buffer, "camerP X: %f, Y: %f\n", cameraPRelToChunk.x, cameraPRelToChunk.y);
+    OutputDebugString(buffer);
+    OutputDebugString("###############################\n");
+    
+    sprintf_s(buffer, "Chunk X: %f, Y: %f\n", gameState->cameraChunkP.chunkP.x, gameState->cameraChunkP.chunkP.y);
+    OutputDebugString(buffer);
+
+    sprintf_s(buffer, "Relat X: %f, Y: %f\n", gameState->cameraChunkP.relP.x, gameState->cameraChunkP.relP.y);
+    OutputDebugString(buffer);
+#endif
     ClearScreen(backBuffer, 0xFF003333);
     
     DrawMap(backBuffer, gameState, &gameState->world, &gameState->tileBitmap, input);
@@ -680,9 +737,12 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                              &gameState->worldArena, &gameState->entitiesArena,
                              gameState->cameraP,
                              backBuffer, &gameState->greenBitmap);
-*/
+
+
 
 /**/
+
+/*
     Vec2 playerDDP = {}; 
 
     playerDDP.x = input->leftStickX;
@@ -940,7 +1000,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->counters[i] = 0;
     }
 #endif
-/**/
+*/
 
 }
 
