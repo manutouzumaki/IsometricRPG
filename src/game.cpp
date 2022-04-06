@@ -9,19 +9,6 @@
 #include <stdio.h>                                        //
 ////////////////////////////////////////////////////////////
 
-struct EntityChunkP
-{
-    Vec2 chunkP;
-    Vec2 relP;
-};
-
-struct Entity
-{
-    Vec2 position;
-    Vec2 dimensions;
-    b8 collides;
-};
-
 #include "world.cpp"
 
 struct Rect2
@@ -646,7 +633,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->fontBitmap = DEBUG_LoadBitmap("../assets/font.bmp", memory->DEBUG_ReadFile, &gameState->bitmapArena);
    
         gameState->tileSizeInMeters = 1.0f;
-        gameState->tileSizeInPixels = 32;
+        gameState->tileSizeInPixels = 8;
         gameState->metersToPixels = (f32)gameState->tileSizeInPixels / gameState->tileSizeInMeters;
         gameState->pixelsToMeters = gameState->tileSizeInMeters / (f32)gameState->tileSizeInPixels;
         
@@ -717,25 +704,12 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     Vec2 cameraPRelToChunk = Vec2Floor(gameState->cameraP / CHUNK_SIZE);
 
-#if 0
-    char buffer[100];
-    sprintf_s(buffer, "camerP X: %f, Y: %f\n", cameraPRelToChunk.x, cameraPRelToChunk.y);
-    OutputDebugString(buffer);
-    OutputDebugString("###############################\n");
-    
-    sprintf_s(buffer, "Chunk X: %f, Y: %f\n", gameState->cameraChunkP.chunkP.x, gameState->cameraChunkP.chunkP.y);
-    OutputDebugString(buffer);
-
-    sprintf_s(buffer, "Relat X: %f, Y: %f\n", gameState->cameraChunkP.relP.x, gameState->cameraChunkP.relP.y);
-    OutputDebugString(buffer);
-#endif
     ClearScreen(backBuffer, 0xFF003333);
     
     DrawMap(backBuffer, gameState, &gameState->world, &gameState->tileBitmap, input);
 
     AddEntityToMousePosition(gameState, &gameState->world, input,
                              &gameState->worldArena, &gameState->entitiesArena,
-                             gameState->cameraP,
                              backBuffer, &gameState->greenBitmap);
 
 

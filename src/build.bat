@@ -11,7 +11,7 @@ REM )
 
 SET compilerFLags= -Od -nologo -Gm- -GR- -Oi -WX -W3 -wd4530 -wd4201 -wd4100 -wd4189 -wd4505 -wd4101 -Zi
 SET includeFlags=
-SET linkerFlags= User32.lib Gdi32.lib Winmm.lib
+SET linkerFlags= -incremental:no User32.lib Gdi32.lib Winmm.lib
 SET defines=-D_DEBUG
 
 PUSHD ..\build

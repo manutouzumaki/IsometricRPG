@@ -1,9 +1,31 @@
+struct EntityChunkP
+{
+    Vec2 chunkP;
+    Vec2 relP;
+};
+
+struct Entity
+{
+    Vec2 position;
+    Vec2 dimensions;
+    b8 collides;
+};
 
 struct ChunkEntities
 {
     i32 count;
     Entity data[CHUNK_SIZE*CHUNK_SIZE];
-    ChunkEntities *next;
+};
+
+struct Floor
+{
+    i32 data[CHUNK_SIZE*CHUNK_SIZE];
+};
+
+struct ChunkTilemap
+{
+    i32 floorCount;
+    Floor floors;
 };
 
 struct Chunk
@@ -12,9 +34,9 @@ struct Chunk
     i32 y;
     i32 z;
     ChunkEntities entities;
+    ChunkTilemap tilemap;
     Chunk *next;
 };
-
 
 struct World
 {
