@@ -370,8 +370,8 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
     QueryPerformanceCounter(&lastCounter);
 
     while(globalRunning)
-    {               
-
+    { 
+/*        
         LARGE_INTEGER workCounter = {};
         QueryPerformanceCounter(&workCounter);
         u64 deltaWork = workCounter.QuadPart - lastCounter.QuadPart;
@@ -387,6 +387,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
             deltaWork = workCounter.QuadPart - lastCounter.QuadPart;
             secondsElapsed = ((f32)deltaWork * (f32)invFrequency);
         }
+*/
 
 
         LARGE_INTEGER currentCounter = {};
@@ -395,7 +396,7 @@ i32 WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, 
 
         currInput->deltaTime = (f32)((f64)(currentCounter.QuadPart - lastCounter.QuadPart) / (f64)frequency.QuadPart);
 
-#if 1    
+#if 0    
         char buffer[100];
         sprintf_s(buffer, "fps: %f\n", fps);
         OutputDebugString(buffer);

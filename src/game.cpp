@@ -38,7 +38,8 @@ struct GameState
     Vec2 cameraP;
     EntityChunkP cameraChunkP;
     
-    // NOTE(manuto): player test...    
+    // NOTE(manuto): player test...
+    EntityChunkP playerChunkP;
     Vec2 playerP;
     Vec2 playerDP;
     f32 playerW;
@@ -608,6 +609,15 @@ void RemapEntityChunkPosition(EntityChunkP *entity)
 
 #include "worldEditor.cpp"
 
+internal
+void DrawPlayer(GameBackBuffer *backBuffer, EntityChunkP player, EntityChunkP camera, Bitmap *bitmap)
+{
+    Vec2 chunkDiff = player.chunkP - camera.chunkP;
+    Vec2 pos = (chunkDiff*CHUNK_SIZE) - camera.relP + player.relP;
+    Vec2 tileIsometricPosition = MapEntityToIsometric(pos.x, pos.y);
+    DrawBitmapVeryVeryFast(backBuffer, bitmap, tileIsometricPosition.x - (32+16+8), tileIsometricPosition.y - (96+16), 128, 128);
+}
+
 EXPORT_TO_PLATORM 
 GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
@@ -645,8 +655,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         gameState->cameraP.x = 0.0f;
         gameState->cameraP.y = 0.0f;
 
-        gameState->playerP.x = 4.0f;
-        gameState->playerP.y = 4.0f;
+        gameState->playerP.x = 0.0f;
+        gameState->playerP.y = 0.0f;
         gameState->playerW = gameState->tileSizeInMeters*0.2f;
         gameState->playerH = gameState->tileSizeInMeters*0.2f;
 
@@ -674,39 +684,190 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         memory->initialized = true;
     }
 
-/**/
+    Vec2 playerDDP = {}; 
+
+    playerDDP.x = input->leftStickX;
+    playerDDP.y = -input->leftStickY;
     if(input->up.isDown)
     {
-        Vec2 direction = Vec2Rotate({0, -5} ,DegToRad(0.0f)) * input->deltaTime;
-        gameState->cameraP = gameState->cameraP + direction;
-        gameState->cameraChunkP.relP = gameState->cameraChunkP.relP + direction; 
+        playerDDP.y = -1.0f; 
     }
     if(input->left.isDown)
     {
-        Vec2 direction = Vec2Rotate({-5, 0} ,DegToRad(0.0f)) * input->deltaTime;
-        gameState->cameraP = gameState->cameraP + direction; 
-        gameState->cameraChunkP.relP = gameState->cameraChunkP.relP + direction; 
+        playerDDP.x = -1.0f; 
     }
     if(input->down.isDown)
     {
-        Vec2 direction = Vec2Rotate({0, 5} ,DegToRad(0.0f)) * input->deltaTime;
-        gameState->cameraP = gameState->cameraP + direction; 
-        gameState->cameraChunkP.relP = gameState->cameraChunkP.relP + direction; 
+        playerDDP.y = 1.0f; 
     }
     if(input->right.isDown)
     {
-        Vec2 direction = Vec2Rotate({5, 0} ,DegToRad(0.0f)) * input->deltaTime;
-        gameState->cameraP = gameState->cameraP + direction; 
-        gameState->cameraChunkP.relP = gameState->cameraChunkP.relP + direction; 
+        playerDDP.x = 1.0f; 
     }
     
-    RemapEntityChunkPosition(&gameState->cameraChunkP);
+    const float acceleration = 20.0f;
+    if(Vec2Length(playerDDP) > 0.0f)
+    {
+        playerDDP = Vec2Rotate(playerDDP, DegToRad(-45.0f));  
+        Vec2Normalize(&playerDDP);
+    }
+    playerDDP = playerDDP * acceleration;
 
-    Vec2 cameraPRelToChunk = Vec2Floor(gameState->cameraP / CHUNK_SIZE);
+    playerDDP = gameState->playerDP * -8.0f + playerDDP;
 
+    gameState->playerDP = playerDDP * input->deltaTime + gameState->playerDP;
+
+///////////////////////////////////////////////////
+// TODO(manuto): Collision System
+///////////////////////////////////////////////////
+
+    START_CYCLE_COUNTER(CollisionCounter);
+    Vec2 rayDirection = gameState->playerDP * input->deltaTime;
+
+    i32 cameraChunkX = (i32)gameState->cameraChunkP.chunkP.x;
+    i32 cameraChunkY = (i32)gameState->cameraChunkP.chunkP.y;
+    i32 minX = cameraChunkX - DISTANCE_TO_RENDER;
+    i32 maxX = cameraChunkX + DISTANCE_TO_RENDER;
+    i32 minY = cameraChunkY - DISTANCE_TO_RENDER;
+    i32 maxY = cameraChunkY + DISTANCE_TO_RENDER;
+    
+    for(i32 y = minY; y <= maxY; ++y)
+    {
+        for(i32 x = minX; x <= maxX; ++x)
+        {
+            Chunk *chunk = GetChunkFromPosition(&gameState->world, x, y, 0);
+            i32 playerChunkX = (i32)gameState->playerChunkP.chunkP.x;
+            i32 playerChunkY = (i32)gameState->playerChunkP.chunkP.y;
+            if(chunk &&
+               chunk->x == playerChunkX &&
+               chunk->y == playerChunkY)
+            {
+                for(i32 j = 0; j < CHUNK_SIZE; ++j)
+                {
+                    for(i32 i = 0; i < CHUNK_SIZE; ++i)
+                    {
+                        if(chunk->tilemap.floors.data[j * CHUNK_SIZE + i] == 0)
+                        {
+                            EntityChunkP entityChunkP = {};
+                            entityChunkP.chunkP.x = (f32)chunk->x;
+                            entityChunkP.chunkP.y = (f32)chunk->y;
+                            entityChunkP.relP.x = (f32)i;
+                            entityChunkP.relP.y = (f32)j;
+
+                            Rect2 rect = {};
+                            rect.position = {floorf(entityChunkP.relP.x) * gameState->tileSizeInMeters - (gameState->playerW*0.5f), floorf(entityChunkP.relP.y) * gameState->tileSizeInMeters - (gameState->playerH*0.5f)};
+                            rect.dimensions = {gameState->tileSizeInMeters + gameState->playerW, gameState->tileSizeInMeters + gameState->playerH};
+                            Vec2 contactNormal = {};
+                    
+                            f32 invDirX = 1.0f / rayDirection.x;
+                            f32 invDirY = 1.0f / rayDirection.y;
+
+                            f32 minX = (rect.position.x - gameState->playerChunkP.relP.x) * invDirX; 
+                            f32 maxX = ((rect.position.x + rect.dimensions.x) - gameState->playerChunkP.relP.x) * invDirX;
+                            
+                            f32 minY = (rect.position.y - gameState->playerChunkP.relP.y) * invDirY; 
+                            f32 maxY = ((rect.position.y + rect.dimensions.y) - gameState->playerChunkP.relP.y) * invDirY;
+                            
+                            if (_isnanf(maxY) || _isnanf(maxX))
+                            {
+                                continue;
+                            }
+                            if (_isnanf(minY) || _isnanf(minX))
+                            {
+                                continue;
+                            }
+
+                            if(minX > maxX) SwapF32(&minX, &maxX);
+                            if(minY > maxY) SwapF32(&minY, &maxY);
+
+                            if(minX > maxY || minY > maxX)
+                            {
+                                continue;
+                            }
+                            
+                            f32 tMin = minX > minY ? minX : minY; 
+                            f32 tMax = maxX < maxY ? maxX : maxY;
+                            
+                            if(tMax < 0)
+                            {
+                                continue;
+                            }
+
+                            if(minX > minY)
+                            {
+                                if(invDirX < 0.0f)
+                                {
+                                    contactNormal = Vec2{1.0f, 0.0f};
+                                }
+                                else
+                                {
+                                    contactNormal = Vec2{-1.0f, 0.0f};
+                                }
+                            }
+                            else if(minX < minY)
+                            {
+                                if(invDirY < 0.0f)
+                                {
+                                    contactNormal = Vec2{0.0f, 1.0f}; 
+                                }
+                                else
+                                {
+                                    contactNormal = Vec2{0.0f, -1.0f}; 
+                                }
+                            }
+                            else
+                            {
+                                if(invDirX == invDirY)
+                                {
+                                    if(invDirX < 0.0f && invDirY < 0.0f)
+                                    {
+                                        contactNormal = Vec2{1.0f, 1.0f};
+                                    }
+                                    else if(invDirX > 0.0f && invDirY > 0.0f)
+                                    {
+                                        contactNormal = Vec2{-1.0f, -1.0f};
+                                    }
+                                }
+                                else if(invDirX == -invDirY)
+                                {
+                                    if(invDirX < 0.0f && invDirY > 0.0f)
+                                    {
+                                        contactNormal = Vec2{1.0f, -1.0f};
+                                    }
+                                    else if(invDirX > 0.0f && invDirY < 0.0f)
+                                    {
+                                        contactNormal = Vec2{-1.0f, 1.0f};
+                                    }
+                                }
+                            }
+
+                            if(tMin >= 0.0f && tMin < 1.0f)
+                            {
+                                Vec2 delta = Vec2ElementMul(contactNormal, Vec2{fabsf(gameState->playerDP.x), fabsf(gameState->playerDP.y)}) * (1.0f - tMin);
+                                gameState->playerDP = gameState->playerDP + delta;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    END_CYCLE_COUNTER(CollisionCounter);
+    
+    gameState->playerP = gameState->playerDP * input->deltaTime + gameState->playerP; 
+
+    gameState->playerChunkP.relP = gameState->playerDP * input->deltaTime + gameState->playerChunkP.relP; 
+    
+    RemapEntityChunkPosition(&gameState->playerChunkP);
+
+    gameState->cameraChunkP = gameState->playerChunkP;
+        
+    
     ClearScreen(backBuffer, 0xFF003333);
     
     DrawMap(backBuffer, gameState, &gameState->world, &gameState->tileBitmap, input);
+
+    DrawPlayer(backBuffer, gameState->playerChunkP, gameState->cameraChunkP, &gameState->entityBitmap);
 
     AddEntityToMousePosition(gameState, &gameState->world, input,
                              &gameState->worldArena, &gameState->entitiesArena,
@@ -714,7 +875,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 
 
-/**/
 
 /*
     Vec2 playerDDP = {}; 
