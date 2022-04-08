@@ -726,10 +726,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     i32 cameraChunkX = (i32)gameState->cameraChunkP.chunkP.x;
     i32 cameraChunkY = (i32)gameState->cameraChunkP.chunkP.y;
-    i32 minX = cameraChunkX - DISTANCE_TO_RENDER;
-    i32 maxX = cameraChunkX + DISTANCE_TO_RENDER;
-    i32 minY = cameraChunkY - DISTANCE_TO_RENDER;
-    i32 maxY = cameraChunkY + DISTANCE_TO_RENDER;
+    i32 minX = cameraChunkX - 1;
+    i32 maxX = cameraChunkX + 1;
+    i32 minY = cameraChunkY - 1;
+    i32 maxY = cameraChunkY + 1;
     
     for(i32 y = minY; y <= maxY; ++y)
     {
@@ -738,9 +738,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             Chunk *chunk = GetChunkFromPosition(&gameState->world, x, y, 0);
             i32 playerChunkX = (i32)gameState->playerChunkP.chunkP.x;
             i32 playerChunkY = (i32)gameState->playerChunkP.chunkP.y;
-            if(chunk &&
+            if(chunk /*&&
                chunk->x == playerChunkX &&
-               chunk->y == playerChunkY)
+               chunk->y == playerChunkY*/)
             {
                 for(i32 j = 0; j < CHUNK_SIZE; ++j)
                 {
@@ -753,6 +753,24 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                             entityChunkP.chunkP.y = (f32)chunk->y;
                             entityChunkP.relP.x = (f32)i;
                             entityChunkP.relP.y = (f32)j;
+
+                            Vec2 entityPos = entityChunkP.chunkP*CHUNK_SIZE + entityChunkP.relP;
+
+#if 1
+                            Rect2 rect = {};
+                            rect.position = {floorf(entityPos.x) * gameState->tileSizeInMeters - (gameState->playerW*0.5f), floorf(entityPos.y) * gameState->tileSizeInMeters - (gameState->playerH*0.5f)};
+                            rect.dimensions = {gameState->tileSizeInMeters + gameState->playerW, gameState->tileSizeInMeters + gameState->playerH};
+                            Vec2 contactNormal = {};
+                    
+                            f32 invDirX = 1.0f / rayDirection.x;
+                            f32 invDirY = 1.0f / rayDirection.y;
+
+                            f32 minX = (rect.position.x - gameState->playerP.x) * invDirX; 
+                            f32 maxX = ((rect.position.x + rect.dimensions.x) - gameState->playerP.x) * invDirX;
+                            
+                            f32 minY = (rect.position.y - gameState->playerP.y) * invDirY; 
+                            f32 maxY = ((rect.position.y + rect.dimensions.y) - gameState->playerP.y) * invDirY;
+#else
 
                             Rect2 rect = {};
                             rect.position = {floorf(entityChunkP.relP.x) * gameState->tileSizeInMeters - (gameState->playerW*0.5f), floorf(entityChunkP.relP.y) * gameState->tileSizeInMeters - (gameState->playerH*0.5f)};
@@ -767,7 +785,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                             
                             f32 minY = (rect.position.y - gameState->playerChunkP.relP.y) * invDirY; 
                             f32 maxY = ((rect.position.y + rect.dimensions.y) - gameState->playerChunkP.relP.y) * invDirY;
-                            
+#endif
                             if (_isnanf(maxY) || _isnanf(maxX))
                             {
                                 continue;
